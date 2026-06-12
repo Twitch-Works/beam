@@ -1,0 +1,29 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+**/.next
+**/dist
+
+# Dev / test
+**/.env
+**/.env.local
+**/.env.*.local
+**/coverage
+**/__tests__
+
+# Editors / OS
+.git
+.gitignore
+**/.DS_Store
+**/Thumbs.db
+**/*.log
+
+# Non-API apps (keep image small — only API is deployed via Docker)
+apps/admin
+apps/parent-app
+apps/parent-web
+apps/teacher-app
+apps/teacher-web

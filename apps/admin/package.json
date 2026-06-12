@@ -1,0 +1,33 @@
+{
+  "name": "admin",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3100",
+    "build": "next build",
+    "start": "next start --port 3100",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src --no-errors-on-unmatched",
+    "readiness": "node ./scripts/readiness-check.mjs"
+  },
+  "dependencies": {
+    "@beam/schemas": "workspace:*",
+    "@beam/ui-tokens": "workspace:*",
+    "@beam/ui-web": "workspace:*",
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.105.4",
+    "@tanstack/react-table": "^8.21.3",
+    "lucide-react": "^0.460.0",
+    "next": "14.2.32",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "recharts": "^2.15.4",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.7.0"
+  }
+}

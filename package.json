@@ -1,0 +1,36 @@
+{
+  "name": "beam",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:parent-app": "turbo dev --filter=parent-app",
+    "dev:parent-web": "turbo dev --filter=parent-web",
+    "dev:teacher-app": "turbo dev --filter=teacher-app",
+    "dev:teacher-web": "turbo dev --filter=teacher-web",
+    "dev:admin": "turbo dev --filter=admin",
+    "dev:api": "turbo dev --filter=api",
+    "dev:web": "turbo dev --filter=parent-web --filter=teacher-web --filter=admin --filter=api",
+    "dev:mobile": "turbo dev --filter=parent-app --filter=teacher-app",
+    "build": "turbo build",
+    "test": "turbo test",
+    "test:unit": "turbo test --filter=api",
+    "test:e2e": "turbo test:e2e",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "format": "biome format --write .",
+    "clean": "turbo clean && rm -rf node_modules",
+    "db:generate": "pnpm --filter=api db:generate",
+    "db:migrate": "pnpm --filter=api db:migrate",
+    "db:studio": "pnpm --filter=api db:studio"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
