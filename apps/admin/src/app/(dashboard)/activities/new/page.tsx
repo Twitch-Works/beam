@@ -19,7 +19,7 @@ export default function NewActivityPage() {
       const result = await adminApi.activities.create({
         ...form,
         status,
-        sessionType: form.sessionType === '1:1' ? 'one_on_one' : 'group',
+        sessionType: form.sessionType,
         sessionDurationMins: parseInt(form.sessionDuration) || 60,
       })
       setSaved(true)

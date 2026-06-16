@@ -16,6 +16,9 @@ export default function ParentProfileEditScreen() {
   const [lastName,  setLastName]  = React.useState((user?.user_metadata?.lastName  as string) ?? '')
   const [city,      setCity]      = React.useState((user?.user_metadata?.city      as string) ?? '')
   const [isSaving,  setIsSaving]  = React.useState(false)
+  const phone = typeof user?.phone === 'string' && user.phone.length > 0
+    ? user.phone
+    : ((user?.user_metadata?.phone as string | undefined) ?? '—')
 
   const canSave = firstName.trim() && !isSaving
 
@@ -86,7 +89,7 @@ export default function ParentProfileEditScreen() {
             <Text style={styles.label}>Phone</Text>
             <TextInput
               style={[styles.input, styles.inputDisabled]}
-              value={user?.phone ?? '—'}
+              value={phone}
               editable={false}
             />
             <Text style={styles.hint}>Phone number cannot be changed here</Text>

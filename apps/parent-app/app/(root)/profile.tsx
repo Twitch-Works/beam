@@ -64,7 +64,10 @@ export default function ProfileScreen() {
   const fullName  = [firstName, lastName].filter(Boolean).join(' ') || 'My Account'
   const initial   = fullName[0]?.toUpperCase() ?? 'U'
   const city      = (user?.user_metadata?.city as string | undefined) ?? ''
-  const phone     = user?.phone ? `+91 ${user.phone.replace('+91', '').replace(/(\d{5})(\d{5})/, '$1 $2')}` : ''
+  const rawPhone  = typeof user?.phone === 'string' && user.phone.length > 0
+    ? user.phone
+    : ((user?.user_metadata?.phone as string | undefined) ?? '')
+  const phone     = rawPhone ? `+91 ${rawPhone.replace('+91', '').replace(/(\d{5})(\d{5})/, '$1 $2')}` : ''
 
   const handleLogout = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)

@@ -26,7 +26,7 @@ const MOCK_USER_ID = '00000000-0000-0000-0000-999999999999'
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = React.useState<Session | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
-  const [isMockSession, setMockSession] = React.useState(true) // dev: auto-login with test user
+  const [isMockSession, setMockSession] = React.useState(false) // dev: auto-login with test user
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {

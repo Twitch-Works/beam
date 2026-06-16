@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -15,30 +15,85 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, fontWeight } from '@/constants/theme'
 import { supabase } from '@/lib/supabase'
+import { parentApi } from '@/lib/api'
+import { useAuth } from '@/lib/AuthContext'
 
 const CITIES = ['Mumbai', 'Bangalore', 'Delhi', 'Chennai', 'Pune', 'Hyderabad', 'Kolkata', 'Ahmedabad']
+function formatPhoneForInput(phone?: string | null) {
+  return (phone ?? '').replace(/^\+91/, '').replace(/\D/g, '').slice(-10)
+}
 
 export default function ParentSetupScreen() {
   const insets = useSafeAreaInsets()
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName]   = useState('')
-  const [city, setCity]           = useState('')
+  const { user } = useAuth()
+  const existingFirstName = (user?.user_metadata?.firstName as string | undefined)?.trim() ?? ''
+  const existingLastName = (user?.user_metadata?.lastName as string | undefined)?.trim() ?? ''
+  const existingCity = (user?.user_metadata?.city as string | undefined)?.trim() ?? ''
+  const existingPhone = formatPhoneForInput(
+    typeof user?.phone === 'string' && user.phone.length > 0
+      ? user.phone
+      : (user?.user_metadata?.phone as string | undefined),
+  )
+
+  const needsName = !existingFirstName || !existingLastName
+  const needsPhone = !existingPhone
+
+  const [firstName, setFirstName] = useState(existingFirstName)
+  const [lastName, setLastName]   = useState(existingLastName)
+  const [city, setCity]           = useState(existingCity)
+  const [phone, setPhone]         = useState(existingPhone)
   const [loading, setLoading]     = useState(false)
 
-  const isValid = firstName.trim().length >= 2 && city.trim().length >= 2
+  const isValid = useMemo(() => {
+    const hasName = needsName ? firstName.trim().length >= 2 && lastName.trim().length >= 1 : true
+    const hasPhone = needsPhone ? phone.trim().length === 10 : true
+    return hasName && hasPhone && city.trim().length >= 2
+  }, [city, firstName, lastName, needsName, needsPhone, phone])
 
   const handleContinue = async () => {
     if (!isValid) return
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     setLoading(true)
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        Alert.alert('Error', 'You need to sign in again.')
+        return
+      }
+
+      const resolvedFirstName = needsName ? firstName.trim() : existingFirstName
+      const resolvedLastName = needsName ? lastName.trim() : existingLastName
+      const resolvedPhone = needsPhone ? `+91${phone.trim()}` : (user.phone || (user.user_metadata?.phone as string | undefined) || '')
+
       const { error } = await supabase.auth.updateUser({
-        data: { firstName: firstName.trim(), lastName: lastName.trim(), city: city.trim(), role: 'parent', onboardingStep: 'parent-done' },
+        data: {
+          firstName: resolvedFirstName,
+          lastName: resolvedLastName,
+          city: city.trim(),
+          phone: resolvedPhone,
+          role: 'parent',
+          onboardingStep: 'parent-done',
+        },
       })
       if (error) {
         Alert.alert('Error', error.message)
         return
       }
+
+      try {
+        await parentApi.users.updateProfile({
+          userId: user.id,
+          firstName: resolvedFirstName,
+          lastName: resolvedLastName,
+          city: city.trim(),
+          phone: resolvedPhone,
+        })
+      } catch (updateError) {
+        const message = updateError instanceof Error ? updateError.message : 'Could not sync profile details.'
+        Alert.alert('Error', message)
+        return
+      }
+
       router.replace('/(auth)/child-setup')
     } finally {
       setLoading(false)
@@ -54,35 +109,67 @@ export default function ParentSetupScreen() {
         <View style={styles.header}>
           <Text style={styles.logo}>beam ✦</Text>
           <Text style={styles.step}>Step 1 of 2</Text>
-          <Text style={styles.title}>Tell us about yourself</Text>
-          <Text style={styles.subtitle}>We'll personalise your experience based on your location</Text>
+          <Text style={styles.title}>Complete your profile</Text>
+          <Text style={styles.subtitle}>
+            {needsName || needsPhone
+              ? 'We need a few more details before you can start booking.'
+              : "We'll personalise your experience based on your location."}
+          </Text>
         </View>
 
         <View style={styles.form}>
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>First Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Priya"
-                placeholderTextColor={colors.gray}
-                value={firstName}
-                onChangeText={setFirstName}
-                autoCapitalize="words"
-              />
+          {needsName ? (
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>First Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Priya"
+                  placeholderTextColor={colors.gray}
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  autoCapitalize="words"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Last Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Sharma"
+                  placeholderTextColor={colors.gray}
+                  value={lastName}
+                  onChangeText={setLastName}
+                  autoCapitalize="words"
+                />
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Last Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Sharma"
-                placeholderTextColor={colors.gray}
-                value={lastName}
-                onChangeText={setLastName}
-                autoCapitalize="words"
-              />
+          ) : (
+            <View style={styles.infoCard}>
+              <Text style={styles.infoTitle}>Name</Text>
+              <Text style={styles.infoValue}>{[existingFirstName, existingLastName].filter(Boolean).join(' ')}</Text>
             </View>
-          </View>
+          )}
+
+          {needsPhone ? (
+            <>
+              <Text style={styles.label}>Phone Number *</Text>
+              <View style={styles.inputRow}>
+                <View style={styles.countryCode}>
+                  <Text style={styles.countryCodeText}>IN  +91</Text>
+                </View>
+                <View style={styles.divider} />
+                <TextInput
+                  style={styles.phoneInput}
+                  placeholder="98765 43210"
+                  placeholderTextColor={colors.gray}
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  value={phone}
+                  onChangeText={setPhone}
+                />
+              </View>
+            </>
+          ) : null}
 
           <Text style={styles.label}>City *</Text>
           <View style={styles.cityGrid}>
@@ -163,6 +250,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
+  infoCard: {
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.lightGray,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  infoTitle: {
+    fontSize: fontSize.caption,
+    color: colors.gray,
+    fontFamily: 'Nunito-SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  infoValue: {
+    fontSize: fontSize.bodyLg,
+    color: colors.navy,
+    fontFamily: 'Nunito-Bold',
+  },
   label: {
     fontSize: fontSize.body,
     fontFamily: 'Nunito-SemiBold',
@@ -179,6 +286,37 @@ const styles = StyleSheet.create({
     color: colors.navy,
     fontFamily: 'Nunito-Regular',
     backgroundColor: colors.lightGray,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.input,
+    height: 52,
+    backgroundColor: colors.lightGray,
+    overflow: 'hidden',
+  },
+  countryCode: {
+    paddingHorizontal: spacing.md,
+  },
+  countryCodeText: {
+    fontSize: fontSize.bodyLg,
+    color: colors.navy,
+    fontFamily: 'Nunito-SemiBold',
+  },
+  divider: {
+    width: 1,
+    height: 24,
+    backgroundColor: colors.border,
+  },
+  phoneInput: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    fontSize: fontSize.bodyLg,
+    color: colors.navy,
+    fontFamily: 'Nunito-Regular',
+    letterSpacing: 1,
   },
   cityGrid: {
     flexDirection: 'row',

@@ -77,6 +77,8 @@ CREATE TABLE "children" (
 	"first_name" text NOT NULL,
 	"last_name" text,
 	"date_of_birth" date NOT NULL,
+	"interests" text[] DEFAULT '{}' NOT NULL,
+	"notes" text,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );

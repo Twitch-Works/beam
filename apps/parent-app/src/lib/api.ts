@@ -103,6 +103,11 @@ export const parentApi = {
   },
 
   users: {
+    registerParent: (body: { userId?: string; email: string; firstName: string; lastName: string; phone?: string }) =>
+      apiFetch<{ id: string }>('/users/register-parent', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     updateProfile: (body: { userId: string; firstName?: string; lastName?: string; city?: string; phone?: string }) =>
       apiFetch<{ ok: boolean }>('/users/profile', {
         method: 'PATCH',

@@ -44,6 +44,9 @@ export default function PaymentScreen() {
   const sessionPrice  = priceParam ? parseFloat(priceParam) : (activityData ? parseFloat(activityData.pricePerSession) : 0)
   const activity      = activityData
   const activityTitle = activity?.title ?? '—'
+  const contactPhone  = typeof user?.phone === 'string' && user.phone.length > 0
+    ? user.phone
+    : ((user?.user_metadata?.phone as string | undefined) ?? '')
 
   const [method, setMethod]           = useState<PaymentMethod>('upi')
   const [couponCode, setCouponCode]   = useState('')
@@ -97,7 +100,7 @@ export default function PaymentScreen() {
         description: activityTitle, currency,
         key: keyId, amount: String(orderAmount), name: 'Beam',
         order_id: orderId,
-        prefill: { contact: user.phone ?? '', name: (user.user_metadata?.firstName as string) ?? '' },
+        prefill: { contact: contactPhone, name: (user.user_metadata?.firstName as string) ?? '' },
         theme: { color: '#1787A6' },
       })
 

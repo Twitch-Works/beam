@@ -1,5 +1,5 @@
 {
-  "id": "6706f755-406b-4d2c-9f16-bf4d5ceba174",
+  "id": "bbf5aa94-090e-41e8-8da3-1894acb2a5e8",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -518,6 +518,19 @@
           "type": "date",
           "primaryKey": false,
           "notNull": true
+        },
+        "interests": {
+          "name": "interests",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",

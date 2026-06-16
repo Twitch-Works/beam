@@ -35,6 +35,8 @@ export const ChildSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1).nullable().optional(),
   dateOfBirth: z.string().date(),
+  interests: z.array(z.string()).default([]),
+  notes: z.string().nullable().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
 })
@@ -48,6 +50,15 @@ export const CreateUserInputSchema = z.object({
   phone: z.string().optional(),
 })
 export type CreateUserInput = z.infer<typeof CreateUserInputSchema>
+
+export const RegisterParentInputSchema = z.object({
+  userId: z.string().uuid().optional(),
+  email: z.string().email(),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  phone: z.string().optional(),
+})
+export type RegisterParentInput = z.infer<typeof RegisterParentInputSchema>
 
 export const UserFiltersSchema = z.object({
   role: UserRoleSchema.optional(),

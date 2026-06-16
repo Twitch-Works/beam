@@ -55,7 +55,7 @@ export default function ActivityDetailPage() {
         description: form.description,
         ageGroup: form.ageGroup,
         pricePerSession: Number(form.pricePerSession),
-        categoryId: form.category || undefined,
+        categoryId: form.categoryId || undefined,
         sessionType: form.sessionType,
         sessionDurationMins: Number(form.sessionDuration?.replace(/\D/g, '') || 60),
         minChildren: Number(form.minChildren),

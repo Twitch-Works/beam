@@ -1,8 +1,11 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+import { adminApi } from '@/lib/api'
+
 export type FormState = {
   title: string
-  category: string
+  categoryId: string
   description: string
   ageGroup: string
   minChildren: string
@@ -18,24 +21,24 @@ export type FormState = {
 }
 
 export const EMPTY_FORM: FormState = {
-  title: '', category: '', description: '', ageGroup: '',
+  title: '', categoryId: '', description: '', ageGroup: '',
   minChildren: '1', maxChildren: '1', sessionDuration: '60 minutes',
   pricePerSession: '', sessionType: '1:1', imageUrl: '', tags: '',
   materialsNeeded: '', preparationNotes: '', status: 'draft',
 }
 
-export const CATEGORIES = [
-  'Art & Craft', 'Chess', 'Coding', 'Cooking', 'Dance',
-  'Math Games', 'Messy Play', 'Music', 'Science Fun',
-  'Sensory Play', 'Storytelling', 'Yoga',
-]
 export const AGE_GROUPS = ['2-3 years', '3-5 years', '5-8 years', '8-12 years']
 export const DURATIONS  = ['30 minutes', '45 minutes', '60 minutes', '90 minutes', '120 minutes']
+
+type CategoryOption = {
+  id: string
+  name: string
+}
 
 export function apiToForm(a: any): FormState {
   return {
     title:             a.title ?? '',
-    category:          a.category ?? '',
+    categoryId:        a.categoryId ?? '',
     description:       a.description ?? '',
     ageGroup:          a.ageGroup ?? '',
     minChildren:       String(a.minChildren ?? 1),
@@ -96,6 +99,31 @@ interface ActivityFormProps {
 }
 
 export function ActivityForm({ value, onChange, mode = 'create', activityId, meta }: ActivityFormProps) {
+  const [categories, setCategories] = useState<CategoryOption[]>([])
+
+  useEffect(() => {
+    let isMounted = true
+    void (async () => {
+      try {
+        const response = await adminApi.categories.list()
+        if (!isMounted) return
+        setCategories(
+          (response.items ?? []).map((category: any) => ({
+            id: category.id,
+            name: category.name,
+          })),
+        )
+      } catch {
+        if (!isMounted) return
+        setCategories([])
+      }
+    })()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   function set(field: keyof FormState) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
       onChange({ ...value, [field]: e.target.value })
@@ -120,9 +148,9 @@ export function ActivityForm({ value, onChange, mode = 'create', activityId, met
         <div className="form-grid">
           <div className="form-group">
             <label className="form-label">Category <span style={{ color: 'var(--color-coral)' }}>*</span></label>
-            <select className="form-input" value={value.category} onChange={set('category')}>
+            <select className="form-input" value={value.categoryId} onChange={set('categoryId')}>
               <option value="">Select category</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div className="form-group">

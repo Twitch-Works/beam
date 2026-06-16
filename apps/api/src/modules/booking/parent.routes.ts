@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify'
+import { randomUUID } from 'node:crypto'
 import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
 import { eq, and, desc, ilike } from 'drizzle-orm'
+import beamSchemas from '@beam/schemas'
 
 // Skill axis mapping: activity tags/category keywords → skill keys
 const CATEGORY_SKILL_MAP: Record<string, string[]> = {
@@ -75,6 +77,32 @@ function deriveBadges(completedBookings: { activityTitle: string | null; session
 }
 
 export async function parentRoutes(fastify: FastifyInstance) {
+  // ── POST /users/register-parent ────────────────────────────────────────────
+  // Create parent row in public.users after Supabase auth signup
+  fastify.post('/users/register-parent', async (req, reply) => {
+    const { userId, email, firstName, lastName, phone } = beamSchemas.RegisterParentInputSchema.parse(req.body)
+    const resolvedUserId = userId ?? randomUUID()
+
+    const [existingById, existingByEmail] = await Promise.all([
+      db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.id, resolvedUserId)).limit(1),
+      db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, email)).limit(1),
+    ])
+
+    if (existingById.length > 0 || existingByEmail.length > 0) {
+      return reply.status(409).send({ error: 'Parent account already exists' })
+    }
+
+    const [user] = await db.insert(schema.users).values({
+      id: resolvedUserId,
+      email,
+      role: 'parent',
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phone: phone?.trim() || null,
+    }).returning({ id: schema.users.id })
+
+    return reply.status(201).send({ id: user.id })
+  })
 
   // ── GET /children/:id/progress ────────────────────────────────────────────
   // Child's skill scores, badges, and most recent teacher note

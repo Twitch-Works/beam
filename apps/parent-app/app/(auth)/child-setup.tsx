@@ -90,6 +90,11 @@ export default function ChildSetupScreen() {
     )
   }
 
+  async function completeOnboarding() {
+    await supabase.auth.updateUser({ data: { onboardingStep: 'complete' } })
+    setStep('success')
+  }
+
   async function handleCreateProfile() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     setLoading(true)
@@ -101,6 +106,10 @@ export default function ChildSetupScreen() {
       const dob = new Date()
       dob.setFullYear(dob.getFullYear() - midAge)
 
+      console.log("CHECKING CHIL AGE and ONBOARDING ");
+      console.log("Child Age:", midAge);
+      console.log("Date of Birth:", dob.toISOString().split('T')[0]);
+
       const { error } = await supabase.from('children').insert({
         parent_id:     user.id,
         first_name:    childName.trim(),
@@ -109,13 +118,25 @@ export default function ChildSetupScreen() {
         notes:         notes.trim() || null,
       })
 
+      console.log("ERRROR ", error);
+
       if (error && error.code !== '42501') {
-        Alert.alert('Error', 'Could not save profile. You can try again from the Kids tab.')
+        Alert.alert(
+          'Error',
+          'Could not save profile. You can try again from the Kids tab.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                void completeOnboarding()
+              },
+            },
+          ],
+        )
         return
       }
 
-      await supabase.auth.updateUser({ data: { onboardingStep: 'complete' } })
-      setStep('success')
+      await completeOnboarding()
     } finally {
       setLoading(false)
     }

@@ -62,6 +62,8 @@ export const children = pgTable('children', {
   firstName: text('first_name').notNull(),
   lastName: text('last_name'),
   dateOfBirth: date('date_of_birth').notNull(),
+  interests: text('interests').array().notNull().default([]),
+  notes: text('notes'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
