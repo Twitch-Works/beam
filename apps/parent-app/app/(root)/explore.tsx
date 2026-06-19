@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, fontWeight } from '@/constants/theme'
 import { useActivities } from '@/hooks/useActivities'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import { useAuth } from '@/lib/AuthContext'
 import { EmptyState } from '@/components/EmptyState'
 import { ActivityRow } from '@/components/explore/ActivityRow'
@@ -66,7 +67,7 @@ export default function ExploreScreen() {
   }, [])
 
   const activecat = CATEGORIES.find(c => c.id === activeCategory)
-  const { data, isLoading } = useActivities({
+  const { data, isLoading, refetch } = useActivities({
     category: activecat?.filterValue,
     search: debouncedQuery || undefined,
     limit: 50,
@@ -75,6 +76,9 @@ export default function ExploreScreen() {
     radiusKm: nearMe ? 10 : undefined,
   })
   const activities = data?.items ?? []
+  const { refreshing, onRefresh } = usePullToRefresh(async () => {
+    await refetch()
+  })
 
   const handlePress = useCallback(async (id: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -151,8 +155,9 @@ export default function ExploreScreen() {
         <FlashList
           data={activities}
           renderItem={renderItem}
-
           keyExtractor={(item) => item.id}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
           contentContainerStyle={{ paddingBottom: insets.bottom + 100, paddingHorizontal: spacing.md, paddingTop: spacing.sm }}
           ListEmptyComponent={
             <EmptyState

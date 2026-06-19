@@ -1,10 +1,12 @@
 import React, { useState } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, RefreshControl } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { router } from 'expo-router'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import { useBookings } from '@/hooks/useBookings'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import { BookingCard, isLiveBooking } from '@/components/bookings/BookingCard'
 import { Avatar } from '@/components/Avatar'
 import type { Booking as ApiBooking } from '@/lib/api'
@@ -47,10 +49,15 @@ function TeacherTrackingBanner({ booking }: { booking: ApiBooking }) {
       </View>
       <TouchableOpacity
         style={styles.trackingBtn}
-        onPress={() => Alert.alert('Track', 'Live tracking coming soon.')}
+        onPress={async () => {
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+          router.push(`/(root)/booking/${booking.id}`)
+        }}
         activeOpacity={0.85}
       >
-        <Text style={styles.trackingBtnText}>Track</Text>
+        <Text style={styles.trackingBtnText}>
+          {booking.status === 'in_progress' ? 'Open Class' : 'Enter OTP'}
+        </Text>
       </TouchableOpacity>
     </View>
   )
@@ -60,9 +67,28 @@ export default function BookingsScreen() {
   const insets = useSafeAreaInsets()
   const [activeTab, setActiveTab] = useState<Tab>('Upcoming')
 
-  const { data: upcomingData, isLoading: loadingUpcoming } = useBookings('pending,confirmed')
-  const { data: completedData, isLoading: loadingCompleted } = useBookings('completed')
-  const { data: cancelledData, isLoading: loadingCancelled } = useBookings('cancelled')
+  const {
+    data: upcomingData,
+    isLoading: loadingUpcoming,
+    refetch: refetchUpcoming,
+  } = useBookings('pending,confirmed,in_progress,rescheduled')
+  const {
+    data: completedData,
+    isLoading: loadingCompleted,
+    refetch: refetchCompleted,
+  } = useBookings('completed')
+  const {
+    data: cancelledData,
+    isLoading: loadingCancelled,
+    refetch: refetchCancelled,
+  } = useBookings('cancelled')
+  const { refreshing, onRefresh } = usePullToRefresh(async () => {
+    await Promise.all([
+      refetchUpcoming(),
+      refetchCompleted(),
+      refetchCancelled(),
+    ])
+  })
 
   const upcomingItems: ApiBooking[] = upcomingData?.items ?? []
   const completedItems: ApiBooking[] = completedData?.items ?? []
@@ -121,6 +147,9 @@ export default function BookingsScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
       >
         {/* Teacher tracking banner — shown when a session is live */}
         {activeTab === 'Upcoming' && liveBooking && (

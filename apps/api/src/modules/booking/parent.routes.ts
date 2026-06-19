@@ -77,6 +77,44 @@ function deriveBadges(completedBookings: { activityTitle: string | null; session
 }
 
 export async function parentRoutes(fastify: FastifyInstance) {
+  // ── GET /users/me ──────────────────────────────────────────────────────────
+  // Resolve the Beam user row for the current auth user.
+  fastify.get<{
+    Querystring: { authUserId?: string; email?: string; phone?: string }
+  }>('/users/me', async (req, reply) => {
+    const { authUserId, email, phone } = req.query
+    const normalizedEmail = email?.trim().toLowerCase()
+    const normalizedPhone = phone?.trim()
+
+    if (!authUserId && !normalizedEmail && !normalizedPhone) {
+      return reply.status(400).send({ error: 'authUserId, email, or phone is required' })
+    }
+
+    let user = authUserId
+      ? await db.query.users.findFirst({ where: eq(schema.users.id, authUserId) })
+      : null
+
+    if (!user && normalizedEmail) {
+      user = await db.query.users.findFirst({ where: eq(schema.users.email, normalizedEmail) })
+    }
+
+    if (!user && normalizedPhone) {
+      user = await db.query.users.findFirst({ where: eq(schema.users.phone, normalizedPhone) })
+    }
+
+    if (!user) return reply.status(404).send({ error: 'User not found' })
+
+    return reply.send({
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      phone: user.phone,
+      city: user.city,
+      role: user.role,
+    })
+  })
+
   // ── POST /users/register-parent ────────────────────────────────────────────
   // Create parent row in public.users after Supabase auth signup
   fastify.post('/users/register-parent', async (req, reply) => {

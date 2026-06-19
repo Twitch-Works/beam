@@ -13,7 +13,7 @@ export default function EditChildScreen() {
   const insets = useSafeAreaInsets()
   const { id, firstName: initialFirst, lastName: initialLast, dob: initialDob } =
     useLocalSearchParams<{ id: string; firstName: string; lastName: string; dob: string }>()
-  const { user } = useAuth()
+  const { parentUserId } = useAuth()
   const queryClient = useQueryClient()
 
   const [firstName, setFirstName] = useState(initialFirst ?? '')
@@ -28,11 +28,11 @@ export default function EditChildScreen() {
 
   const handleSave = async () => {
     if (!firstName.trim()) { Alert.alert('Required', 'First name cannot be empty.'); return }
-    if (!user || !id) return
+    if (!parentUserId || !id) return
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     setSaving(true)
     try {
-      await parentApi.children.update(id, user.id, {
+      await parentApi.children.update(id, parentUserId, {
         firstName: firstName.trim(),
         lastName: lastName.trim() || undefined,
         dateOfBirth: dob || undefined,

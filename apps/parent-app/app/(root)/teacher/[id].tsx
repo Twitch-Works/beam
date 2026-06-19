@@ -19,7 +19,13 @@ export default function TeacherProfileScreen() {
 
   const handleBookActivity = async (activityId: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-    router.push(`/(root)/slots/${activityId}`)
+    router.push({
+      pathname: `/(root)/slots/${activityId}`,
+      params: {
+        teacherId: id ?? '',
+        teacherName: teacher ? `${teacher.firstName} ${teacher.lastName ?? ''}`.trim() : '',
+      },
+    })
   }
 
   const fullName = teacher ? `${teacher.firstName} ${teacher.lastName ?? ''}`.trim() : ''

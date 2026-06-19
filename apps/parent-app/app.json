@@ -20,7 +20,9 @@
       "infoPlist": {
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": ["beam"]
+            "CFBundleURLSchemes": [
+              "beam"
+            ]
           }
         ],
         "NSLocationWhenInUseUsageDescription": "Beam uses your location to show activities near you.",
@@ -33,13 +35,23 @@
         "backgroundColor": "#1787A6"
       },
       "package": "com.beam.parent",
-      "permissions": ["android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"],
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",
           "autoVerify": true,
-          "data": [{ "scheme": "beam" }],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "data": [
+            {
+              "scheme": "beam"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -63,7 +75,7 @@
         "origin": false
       },
       "eas": {
-        "projectId": "beam-parent-app"
+        "projectId": "ef7c21a5-cd69-473f-9018-4c16a40f8653"
       }
     }
   }

@@ -9,7 +9,7 @@ import { SkeletonStatCard, SkeletonLine } from '@/components/Skeleton'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StatCard } from '@/components/ui/StatCard'
 
-type BookingStatus = 'confirmed' | 'completed' | 'cancelled' | 'pending' | 'rescheduled'
+type BookingStatus = 'confirmed' | 'completed' | 'cancelled' | 'pending' | 'rescheduled' | 'in_progress'
 
 interface CalBooking {
   id: string
@@ -43,6 +43,7 @@ const STATUS_COLORS: Record<BookingStatus, { bg: string; text: string }> = {
   confirmed:   { bg: '#DCFCE7', text: '#166534' },
   completed:   { bg: '#E5F7F4', text: '#0F4C5C' },
   cancelled:   { bg: '#FEE2E2', text: '#991B1B' },
+  in_progress: { bg: '#DBEAFE', text: '#1D4ED8' },
   pending:     { bg: '#FEF3C7', text: '#92400E' },
   rescheduled: { bg: '#EDE9FE', text: '#5B21B6' },
 }

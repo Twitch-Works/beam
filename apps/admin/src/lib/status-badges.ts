@@ -1,10 +1,11 @@
 // Centralised badge label + CSS class maps for all entity statuses.
 // Import from here instead of defining locally per page.
 
-export const BOOKING_STATUS_BADGE: Record<'confirmed' | 'completed' | 'cancelled' | 'pending' | 'rescheduled', { label: string; cls: string }> = {
+export const BOOKING_STATUS_BADGE: Record<'confirmed' | 'completed' | 'cancelled' | 'pending' | 'rescheduled' | 'in_progress', { label: string; cls: string }> = {
   confirmed:   { label: 'Confirmed',   cls: 'badge badge--confirmed' },
   completed:   { label: 'Completed',   cls: 'badge badge--completed' },
   cancelled:   { label: 'Cancelled',   cls: 'badge badge--cancelled' },
+  in_progress: { label: 'In Progress', cls: 'badge badge--upcoming' },
   pending:     { label: 'Pending',     cls: 'badge badge--pending' },
   rescheduled: { label: 'Rescheduled', cls: 'badge badge--rescheduled' },
 }

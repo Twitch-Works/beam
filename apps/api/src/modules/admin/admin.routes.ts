@@ -1,9 +1,66 @@
 import type { FastifyInstance } from 'fastify'
-import { and, count, desc, eq, gte, ilike, lte, or, sql, type SQL } from 'drizzle-orm'
+import { and, count, desc, eq, gte, ilike, lte, or, sql, type SQL, aliasedTable } from 'drizzle-orm'
 import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
+import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
+
+const SLOT_DURATION_OPTIONS = [30, 45, 60, 90, 120, 180, 240]
+
+function normalizeSkillTerm(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function parseTimeToMinutes(value: string) {
+  const [hours, minutes] = value.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+function getTodayDateString() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function buildSkillIndex(values: string[]) {
+  const phrases = new Set<string>()
+  const tokens = new Set<string>()
+
+  for (const value of values) {
+    const normalized = normalizeSkillTerm(value)
+    if (!normalized) continue
+    phrases.add(normalized)
+    for (const token of normalized.split(' ')) {
+      if (token) tokens.add(token)
+    }
+  }
+
+  return { phrases, tokens }
+}
+
+function teacherMatchesActivitySpecialization(
+  teacherSpecializations: string[],
+  activityKeywords: string[],
+) {
+  const teacherIndex = buildSkillIndex(teacherSpecializations)
+  const activityIndex = buildSkillIndex(activityKeywords)
+
+  if (teacherIndex.phrases.size === 0) return false
+
+  for (const phrase of teacherIndex.phrases) {
+    if (activityIndex.phrases.has(phrase)) return true
+  }
+
+  for (const token of teacherIndex.tokens) {
+    if (activityIndex.tokens.has(token)) return true
+  }
+
+  return false
+}
 
 export async function adminRoutes(fastify: FastifyInstance) {
+  const teacherUsers = aliasedTable(schema.users, 'teacher_users')
 
   // ─── Analytics Overview ────────────────────────────────────────────────────
 
@@ -20,7 +77,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         .where(or(eq(schema.users.role, 'parent'), eq(schema.users.role, 'teacher'))),
 
       db.select({ count: count() }).from(schema.bookings)
-        .where(or(eq(schema.bookings.status, 'pending'), eq(schema.bookings.status, 'confirmed'))),
+        .where(or(eq(schema.bookings.status, 'pending'), eq(schema.bookings.status, 'confirmed'), eq(schema.bookings.status, 'in_progress'))),
 
       db.select({ total: sql<string>`coalesce(sum(amount), 0)` }).from(schema.payments)
         .where(eq(schema.payments.status, 'success')),
@@ -72,6 +129,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     const conditions: SQL<unknown>[] = []
     if (req.query.status) conditions.push(eq(schema.bookings.status, req.query.status as any))
+    if (req.query.city) {
+      conditions.push(ilike(schema.users.city, `%${req.query.city}%`))
+    }
     if (req.query.search) {
       const q = `%${req.query.search}%`
       conditions.push(
@@ -79,6 +139,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
           ilike(schema.users.firstName, q),
           ilike(schema.users.lastName, q),
           ilike(schema.activities.title, q),
+          ilike(schema.children.firstName, q),
         )!
       )
     }
@@ -93,17 +154,25 @@ export async function adminRoutes(fastify: FastifyInstance) {
         totalAmount: schema.bookings.totalAmount,
         discountAmount: schema.bookings.discountAmount,
         scheduledAt: schema.bookings.scheduledAt,
+        confirmedAt: schema.bookings.confirmedAt,
+        completedAt: schema.bookings.completedAt,
+        teacherOtpVerifiedAt: schema.bookings.teacherOtpVerifiedAt,
+        payoutReleasedAt: schema.bookings.payoutReleasedAt,
         createdAt: schema.bookings.createdAt,
         parentFirstName: schema.users.firstName,
         parentLastName: schema.users.lastName,
         parentCity: schema.users.city,
         activityTitle: schema.activities.title,
         childFirstName: schema.children.firstName,
+        teacher: sql<string | null>`nullif(trim(coalesce(${teacherUsers.firstName}, '') || ' ' || coalesce(${teacherUsers.lastName}, '')), '')`,
+        paymentStatus: schema.payments.status,
       })
         .from(schema.bookings)
         .leftJoin(schema.users, eq(schema.bookings.parentId, schema.users.id))
+        .leftJoin(teacherUsers, eq(schema.bookings.teacherId, teacherUsers.id))
         .leftJoin(schema.activities, eq(schema.bookings.activityId, schema.activities.id))
         .leftJoin(schema.children, eq(schema.bookings.childId, schema.children.id))
+        .leftJoin(schema.payments, eq(schema.bookings.id, schema.payments.bookingId))
         .where(where)
         .orderBy(desc(schema.bookings.createdAt))
         .limit(limit)
@@ -113,6 +182,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         .from(schema.bookings)
         .leftJoin(schema.users, eq(schema.bookings.parentId, schema.users.id))
         .leftJoin(schema.activities, eq(schema.bookings.activityId, schema.activities.id))
+        .leftJoin(schema.children, eq(schema.bookings.childId, schema.children.id))
         .where(where),
     ])
 
@@ -143,7 +213,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
       }) ?? null
     }
 
-    return reply.send({ ...booking, teacher })
+    const payout = await db.query.payouts.findFirst({
+      where: sql`${schema.payouts.bookingIds} @> ARRAY[${req.params.id}]::uuid[]`,
+    })
+
+    return reply.send({ ...booking, teacher, payout })
   })
 
   // ─── Teachers List ─────────────────────────────────────────────────────────
@@ -718,6 +792,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string }
     const rows = await db.select({
       id: schema.slots.id,
+      teacherId: schema.slots.teacherId,
       date: schema.slots.date,
       startTime: schema.slots.startTime,
       endTime: schema.slots.endTime,
@@ -738,6 +813,97 @@ export async function adminRoutes(fastify: FastifyInstance) {
     if (!activityId || !teacherId || !date || !startTime || !endTime) {
       return reply.status(400).send({ error: 'activityId, teacherId, date, startTime, endTime required' })
     }
+
+    if (startTime >= endTime) {
+      return reply.status(422).send({ error: 'endTime must be after startTime' })
+    }
+
+    const [activityRows, teacherRows] = await Promise.all([
+      db.select({
+        id: schema.activities.id,
+        title: schema.activities.title,
+        sessionDurationMins: schema.activities.sessionDurationMins,
+        tags: schema.activities.tags,
+        categoryName: schema.categories.name,
+      })
+        .from(schema.activities)
+        .leftJoin(schema.categories, eq(schema.activities.categoryId, schema.categories.id))
+        .where(eq(schema.activities.id, activityId))
+        .limit(1),
+      db.select({
+        id: schema.users.id,
+        verificationStatus: schema.teachers.verificationStatus,
+        specializations: schema.teachers.specializations,
+      })
+        .from(schema.users)
+        .innerJoin(schema.teachers, eq(schema.teachers.userId, schema.users.id))
+        .where(eq(schema.users.id, teacherId))
+        .limit(1),
+    ])
+
+    const activity = activityRows[0]
+    const teacher = teacherRows[0]
+
+    if (!activity) return reply.status(404).send({ error: 'Activity not found' })
+    if (!teacher) return reply.status(404).send({ error: 'Teacher not found' })
+
+    const startMinutes = parseTimeToMinutes(startTime)
+    const endMinutes = parseTimeToMinutes(endTime)
+    const slotDurationMinutes = endMinutes - startMinutes
+    const minSlotDuration = activity.sessionDurationMins
+    const maxSlotDuration = activity.sessionDurationMins * 2
+
+    if (date === getTodayDateString()) {
+      const now = new Date()
+      const currentMinutes = now.getHours() * 60 + now.getMinutes()
+      if (startMinutes <= currentMinutes) {
+        return reply.status(422).send({ error: 'Start time must be after the current time' })
+      }
+    }
+
+    if (slotDurationMinutes < minSlotDuration) {
+      return reply.status(422).send({ error: `Slot duration must be at least ${minSlotDuration} minutes` })
+    }
+
+    if (slotDurationMinutes > maxSlotDuration) {
+      return reply.status(422).send({ error: `Slot duration cannot be more than ${maxSlotDuration} minutes` })
+    }
+
+    const allowedDurations = SLOT_DURATION_OPTIONS.filter((duration) =>
+      duration >= minSlotDuration && duration <= maxSlotDuration,
+    )
+
+    if (!allowedDurations.includes(slotDurationMinutes)) {
+      return reply.status(422).send({
+        error: `Slot duration must be one of: ${allowedDurations.join(', ')} minutes`,
+      })
+    }
+
+    const activityKeywords = [
+      activity.title,
+      activity.categoryName ?? '',
+      ...(activity.tags ?? []),
+    ]
+
+    if (!teacherMatchesActivitySpecialization(teacher.specializations ?? [], activityKeywords)) {
+      return reply.status(422).send({ error: 'Teacher specializations do not match this activity' })
+    }
+
+    const existingDuplicate = await db.select({ id: schema.slots.id })
+      .from(schema.slots)
+      .where(and(
+        eq(schema.slots.activityId, activityId),
+        eq(schema.slots.teacherId, teacherId),
+        eq(schema.slots.date, date),
+        eq(schema.slots.startTime, startTime),
+        eq(schema.slots.endTime, endTime),
+      ))
+      .limit(1)
+
+    if (existingDuplicate.length > 0) {
+      return reply.status(409).send({ error: 'This teacher already has the same slot for this activity' })
+    }
+
     const [slot] = await db.insert(schema.slots).values({
       activityId,
       teacherId,
@@ -746,7 +912,15 @@ export async function adminRoutes(fastify: FastifyInstance) {
       endTime,
       isAvailable: true,
     }).returning()
-    return reply.status(201).send(slot)
+
+    await syncConflictingTeacherSlots(db, { teacherId, date, startTime, endTime })
+
+    const [freshSlot] = await db.select()
+      .from(schema.slots)
+      .where(eq(schema.slots.id, slot.id))
+      .limit(1)
+
+    return reply.status(201).send(freshSlot ?? slot)
   })
 
   // ─── Verify / Reject Teacher ───────────────────────────────────────────────
@@ -847,17 +1021,32 @@ export async function adminRoutes(fastify: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params
 
+      const existing = await db.query.bookings.findFirst({
+        where: eq(schema.bookings.id, id),
+      })
+      if (!existing) return reply.status(404).send({ error: 'Booking not found' })
+
       const [booking] = await db
         .update(schema.bookings)
         .set({ status: 'cancelled', updatedAt: new Date() })
         .where(eq(schema.bookings.id, id))
         .returning()
 
-      if (!booking) return reply.status(404).send({ error: 'Booking not found' })
-
       const payment = await db.query.payments.findFirst({
         where: eq(schema.payments.bookingId, id),
       })
+
+      if (existing.slotId) {
+        const slot = await db.query.slots.findFirst({ where: eq(schema.slots.id, existing.slotId) })
+        if (slot) {
+          await syncConflictingTeacherSlots(db, {
+            teacherId: slot.teacherId,
+            date: slot.date,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+          })
+        }
+      }
 
       if (payment && payment.status === 'success') {
         await db

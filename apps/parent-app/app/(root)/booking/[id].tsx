@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  TextInput,
+  RefreshControl,
 } from 'react-native'
 import { Image } from 'expo-image'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -22,6 +24,7 @@ import { Avatar } from '@/components/Avatar'
 import { Button } from '@/components/Button'
 import { useAuth } from '@/lib/AuthContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import { parentApi } from '@/lib/api'
 import type { Booking } from '@/lib/api'
 
@@ -72,20 +75,64 @@ function formatTime(iso: string | null): string {
 export default function BookingDetailScreen() {
   const insets = useSafeAreaInsets()
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { user } = useAuth()
+  const { parentUserId } = useAuth()
   const queryClient = useQueryClient()
   const [cancelling, setCancelling] = useState(false)
+  const [otp, setOtp] = useState('')
+  const [verifyingOtp, setVerifyingOtp] = useState(false)
+  const [completing, setCompleting] = useState(false)
 
-  const { data: booking, isLoading, isError } = useQuery<Booking>({
-    queryKey: ['booking', id, user?.id],
-    queryFn: () => parentApi.bookings.get(id!, user!.id),
-    enabled: !!id && !!user?.id,
+  const { data: booking, isLoading, isError, refetch } = useQuery<Booking>({
+    queryKey: ['booking', id, parentUserId],
+    queryFn: () => parentApi.bookings.get(id!, parentUserId!),
+    enabled: !!id && !!parentUserId,
     staleTime: 1000 * 30,
+  })
+  const { refreshing, onRefresh } = usePullToRefresh(async () => {
+    await refetch()
   })
 
   const teacherName = booking?.teacherFirstName
     ? `${booking.teacherFirstName} ${booking.teacherLastName ?? ''}`.trim()
     : '—'
+
+  const handleReschedule = async () => {
+    if (!booking?.activityId) return
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    router.push({ pathname: `/(root)/slots/${booking.activityId}`, params: { bookingId: booking.id } })
+  }
+
+  const handleVerifyOtp = async () => {
+    if (!parentUserId || !booking || otp.trim().length !== 6) return
+    setVerifyingOtp(true)
+    try {
+      await parentApi.bookings.verifyOtp(booking.id, parentUserId, otp.trim())
+      await queryClient.invalidateQueries({ queryKey: ['booking', id, parentUserId] })
+      await queryClient.invalidateQueries({ queryKey: ['bookings'] })
+      setOtp('')
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    } catch (err: any) {
+      Alert.alert('OTP verification failed', err?.message ?? 'Please try again.')
+    } finally {
+      setVerifyingOtp(false)
+    }
+  }
+
+  const handleComplete = async () => {
+    if (!parentUserId || !booking) return
+    setCompleting(true)
+    try {
+      await parentApi.bookings.complete(booking.id, parentUserId)
+      await queryClient.invalidateQueries({ queryKey: ['booking', id, parentUserId] })
+      await queryClient.invalidateQueries({ queryKey: ['bookings'] })
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      Alert.alert('Class completed', 'The booking is now complete and teacher payout has been released.')
+    } catch (err: any) {
+      Alert.alert('Could not complete class', err?.message ?? 'Please try again.')
+    } finally {
+      setCompleting(false)
+    }
+  }
 
   const handleCancel = () => {
     Alert.alert(
@@ -97,10 +144,10 @@ export default function BookingDetailScreen() {
           text: 'Yes, Cancel',
           style: 'destructive',
           onPress: async () => {
-            if (!user || !id) return
+            if (!parentUserId || !id) return
             setCancelling(true)
             try {
-              await parentApi.bookings.cancel(id, user.id)
+              await parentApi.bookings.cancel(id, parentUserId)
               await queryClient.invalidateQueries({ queryKey: ['booking', id] })
               await queryClient.invalidateQueries({ queryKey: ['bookings'] })
               await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
@@ -133,6 +180,9 @@ export default function BookingDetailScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
         >
           {/* Activity image + title */}
           <View style={styles.heroCard}>
@@ -193,7 +243,48 @@ export default function BookingDetailScreen() {
               <Text style={styles.paymentLabel}>Total paid</Text>
               <Text style={styles.paymentAmount}>₹{parseFloat(booking.totalAmount).toFixed(0)}</Text>
             </View>
+            <Text style={styles.paymentHint}>
+              {booking.payoutReleasedAt
+                ? 'Teacher payout released after class completion.'
+                : booking.paymentStatus === 'success'
+                  ? 'Mock payment captured. Teacher payout will release after class completion.'
+                  : 'Payment is pending.'}
+            </Text>
           </View>
+
+          {(booking.otpVisible || booking.status === 'in_progress') && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Class Start OTP</Text>
+              <Text style={styles.otpHint}>
+                Ask the teacher for the 6-digit OTP when class starts, then enter it here to confirm attendance.
+              </Text>
+              {!booking.teacherOtpVerifiedAt && (
+                <>
+                  <TextInput
+                    style={styles.otpInput}
+                    placeholder="Enter 6-digit OTP"
+                    placeholderTextColor={colors.gray}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    value={otp}
+                    onChangeText={setOtp}
+                  />
+                  <Button
+                    variant="primary"
+                    label={verifyingOtp ? 'Verifying…' : 'Verify OTP'}
+                    onPress={handleVerifyOtp}
+                    disabled={verifyingOtp || otp.trim().length !== 6}
+                  />
+                </>
+              )}
+              {!!booking.teacherOtpVerifiedAt && (
+                <View style={styles.verifiedRow}>
+                  <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                  <Text style={styles.verifiedText}>OTP verified. You can complete the class after it ends.</Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Actions */}
           {booking.status === 'completed' && booking.activityId && (
@@ -202,6 +293,23 @@ export default function BookingDetailScreen() {
               icon="refresh-outline"
               label="Rebook this activity"
               onPress={() => router.push(`/(root)/slots/${booking.activityId}`)}
+            />
+          )}
+          {booking.canReschedule && (
+            <Button
+              variant="secondary"
+              icon="repeat-outline"
+              label="Reschedule Booking"
+              onPress={handleReschedule}
+            />
+          )}
+          {booking.canComplete && (
+            <Button
+              variant="primary"
+              icon="checkmark-circle-outline"
+              label={completing ? 'Completing…' : 'Complete Class'}
+              onPress={handleComplete}
+              disabled={completing}
             />
           )}
           {(booking.status === 'pending' || booking.status === 'confirmed') && (
@@ -304,6 +412,41 @@ const styles = StyleSheet.create({
     fontSize: fontSize.h3,
     fontFamily: 'Nunito-Bold',
     color: colors.primary,
+  },
+  paymentHint: {
+    fontSize: fontSize.caption,
+    fontFamily: 'Nunito-Regular',
+    color: colors.gray,
+  },
+  otpHint: {
+    fontSize: fontSize.body,
+    fontFamily: 'Nunito-Regular',
+    color: colors.gray,
+    lineHeight: 20,
+  },
+  otpInput: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.input,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.lightGray,
+    fontSize: fontSize.bodyLg,
+    fontFamily: 'Nunito-SemiBold',
+    color: colors.navy,
+    letterSpacing: 4,
+    textAlign: 'center',
+  },
+  verifiedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  verifiedText: {
+    flex: 1,
+    fontSize: fontSize.body,
+    fontFamily: 'Nunito-SemiBold',
+    color: colors.success,
   },
   cancelBtn: {
     height: 48,

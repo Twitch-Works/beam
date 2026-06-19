@@ -3,11 +3,11 @@ import { useAuth } from '@/lib/AuthContext'
 import { parentApi } from '@/lib/api'
 
 export function useBookings(statusFilter?: string) {
-  const { user } = useAuth()
+  const { parentUserId } = useAuth()
   return useQuery({
-    queryKey: ['bookings', user?.id, statusFilter],
-    queryFn: () => parentApi.bookings.list(user!.id, { status: statusFilter }),
-    enabled: !!user?.id,
+    queryKey: ['bookings', parentUserId, statusFilter],
+    queryFn: () => parentApi.bookings.list(parentUserId!, { status: statusFilter }),
+    enabled: !!parentUserId,
     staleTime: 1000 * 30,
   })
 }

@@ -91,6 +91,7 @@ export async function processWebhook(rawBody: Buffer, signature: string) {
     await repo.confirmPayment(existing.id, paymentId ?? '', 'failed')
     await repo.updateBookingStatus(existing.bookingId, 'cancelled')
     await repo.releaseSlot(existing.bookingId)
+    await repo.syncSlotsForBooking(existing.bookingId)
   }
 
   return ok(true)

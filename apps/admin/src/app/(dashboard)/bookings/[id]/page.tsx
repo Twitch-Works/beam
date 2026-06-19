@@ -6,38 +6,46 @@ import { useMockMode } from '@/lib/mock-mode'
 import { formatInr } from '@/lib/formatters'
 import { adminApi } from '@/lib/api'
 import { SkeletonLine } from '@/components/Skeleton'
+import { BOOKING_STATUS_BADGE, PAYMENT_STATUS_BADGE, PAYOUT_STATUS_BADGE } from '@/lib/status-badges'
 
 type BookingDetail = {
   id: string
-  status: 'upcoming' | 'confirmed' | 'completed' | 'cancelled' | 'rescheduled' | 'pending'
+  status: 'confirmed' | 'completed' | 'cancelled' | 'rescheduled' | 'pending' | 'in_progress'
   dateTime: string
   sessionType: '1:1' | 'group'
   amount: number
-  razorpayId: string
+  paymentReference: string
+  paymentStatus: 'success' | 'failed' | 'refunded' | 'pending'
+  payoutStatus: 'queued' | 'dispatched' | 'settled' | 'failed' | null
+  payoutAmount: number | null
   child:   { name: string; age: number; initials: string }
   parent:  { name: string; phone: string; email: string }
-  teacher: { name: string; phone: string; rating: number; specialties: string[] }
+  teacher: { name: string; phone: string; rating: number; specialties: string[]; assigned: boolean }
   activity: { title: string; category: string; duration: string; price: number }
   timeline: { label: string; time: string; done: boolean; note?: string }[]
 }
 
 const mockBooking: BookingDetail = {
   id: 'BK-12589',
-  status: 'upcoming',
+  status: 'confirmed',
   dateTime: '16 May 2026, 4:00 PM',
   sessionType: '1:1',
   amount: 649,
-  razorpayId: 'pay_QxR9mT3bL72kA',
+  paymentReference: 'mock_BK12589',
+  paymentStatus: 'success',
+  payoutStatus: 'queued',
+  payoutAmount: null,
   child:   { name: 'Aarav Mehta',      age: 3, initials: 'AM' },
   parent:  { name: 'Rahul Mehta',      phone: '+91 98765 10001', email: 'rahul.mehta@gmail.com' },
-  teacher: { name: 'Ms. Priya Sharma', phone: '+91 98765 43210', rating: 4.9, specialties: ['Messy Play', 'Art & Craft'] },
+  teacher: { name: 'Ms. Priya Sharma', phone: '+91 98765 43210', rating: 4.9, specialties: ['Messy Play', 'Art & Craft'], assigned: true },
   activity: { title: 'Messy Play Session', category: 'Messy Play', duration: '60 min', price: 649 },
   timeline: [
     { label: 'Booking Created',   time: '10 May 2026, 9:14 AM',  done: true,  note: 'Parent booked via web app' },
-    { label: 'Payment Captured',  time: '10 May 2026, 9:15 AM',  done: true,  note: 'Razorpay payment successful' },
+    { label: 'Mock Payment Captured',  time: '10 May 2026, 9:15 AM',  done: true,  note: 'Mock payment recorded successfully' },
     { label: 'Teacher Confirmed', time: '10 May 2026, 10:02 AM', done: true,  note: 'Ms. Priya Sharma accepted' },
-    { label: 'Session Scheduled', time: '16 May 2026, 4:00 PM',  done: false, note: 'Pending session start' },
-    { label: 'Session Completed', time: '—',                      done: false },
+    { label: 'Class OTP Verified', time: '—',                     done: false, note: 'Parent verifies teacher arrival at class time' },
+    { label: 'Parent Completed Class', time: '—',                 done: false },
+    { label: 'Teacher Payout Released', time: '—',                done: false },
   ],
 }
 
@@ -46,11 +54,13 @@ function buildTimeline(b: any): BookingDetail['timeline'] {
     d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
   const steps: BookingDetail['timeline'] = [
-    { label: 'Booking Created',   time: fmt(b.createdAt),                      done: !!b.createdAt,     note: 'Parent booked via app' },
-    { label: 'Payment Captured',  time: fmt(b.payment?.createdAt ?? b.createdAt), done: !!b.payment,    note: b.payment ? 'Payment successful' : undefined },
-    { label: 'Teacher Confirmed', time: fmt(b.confirmedAt),                    done: !!b.confirmedAt,   note: b.teacher ? `${b.teacher.firstName} ${b.teacher.lastName ?? ''}`.trim() + ' accepted' : undefined },
-    { label: 'Session Scheduled', time: fmt(b.slot?.startTime),                done: !!b.slot,          note: b.slot ? 'Session date confirmed' : undefined },
-    { label: 'Session Completed', time: fmt(b.completedAt),                    done: !!b.completedAt },
+    { label: 'Booking Created', time: fmt(b.createdAt), done: !!b.createdAt, note: 'Parent booked from the parent app' },
+    { label: 'WhatsApp Sent To Teacher', time: fmt(b.lastWhatsAppSentAt), done: !!b.lastWhatsAppSentAt, note: 'Teacher booking request notification sent' },
+    { label: 'Mock Payment Captured', time: fmt(b.payment?.createdAt ?? b.createdAt), done: !!b.payment, note: b.payment ? `Payment status: ${b.payment.status}` : undefined },
+    { label: 'Teacher Confirmed', time: fmt(b.confirmedAt), done: !!b.confirmedAt, note: b.teacher ? `${b.teacher.firstName} ${b.teacher.lastName ?? ''}`.trim() + ' accepted the booking' : undefined },
+    { label: 'Class OTP Verified', time: fmt(b.teacherOtpVerifiedAt), done: !!b.teacherOtpVerifiedAt, note: b.teacherOtpVerifiedAt ? 'Teacher arrival verified by parent OTP match' : undefined },
+    { label: 'Parent Completed Class', time: fmt(b.parentCompletedAt ?? b.completedAt), done: !!(b.parentCompletedAt ?? b.completedAt), note: !!(b.parentCompletedAt ?? b.completedAt) ? 'Class marked complete from parent side' : undefined },
+    { label: 'Teacher Payout Released', time: fmt(b.payoutReleasedAt ?? b.payout?.settledAt), done: !!(b.payoutReleasedAt ?? b.payout?.settledAt), note: b.payout ? `Payout ${b.payout.status}` : undefined },
   ]
   return steps
 }
@@ -74,6 +84,7 @@ export default function BookingDetailPage() {
     void (async () => {
       try {
         const b = await adminApi.bookings.get(id)
+        const teacherProfile = b.teacher?.teacher ?? null
 
         const childDob = b.child?.dateOfBirth ? new Date(b.child.dateOfBirth) : null
         const childAge = childDob ? Math.floor((Date.now() - childDob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : 0
@@ -92,7 +103,10 @@ export default function BookingDetailPage() {
           dateTime: sessionDate,
           sessionType: b.sessionType === 'group' ? 'group' : '1:1',
           amount: Number(b.payment?.amount ?? b.totalAmount ?? 0),
-          razorpayId: b.payment?.gatewayPaymentId ?? b.payment?.razorpayId ?? '—',
+          paymentReference: b.payment?.gatewayPaymentId ?? b.payment?.razorpayId ?? '—',
+          paymentStatus: (b.payment?.status ?? 'pending') as BookingDetail['paymentStatus'],
+          payoutStatus: (b.payout?.status ?? null) as BookingDetail['payoutStatus'],
+          payoutAmount: b.payout?.amount ? Number(b.payout.amount) : null,
           child: {
             name: childName,
             age: childAge,
@@ -104,10 +118,11 @@ export default function BookingDetailPage() {
             email: b.parent?.email ?? '—',
           },
           teacher: {
-            name: b.teacher ? `${b.teacher.firstName ?? ''} ${b.teacher.lastName ?? ''}`.trim() : '—',
+            name: b.teacher ? `${b.teacher.firstName ?? ''} ${b.teacher.lastName ?? ''}`.trim() : 'Unassigned',
             phone: b.teacher?.phone ?? '—',
-            rating: Number(b.teacher?.avgRating ?? b.teacher?.rating ?? 0),
-            specialties: b.teacher?.specializations ?? [],
+            rating: Number(teacherProfile?.rating ?? 0),
+            specialties: teacherProfile?.specializations ?? [],
+            assigned: !!b.teacher,
           },
           activity: {
             title: b.activity?.title ?? '—',
@@ -171,7 +186,9 @@ export default function BookingDetailPage() {
     }
   }
 
-  const statusClass = `badge--${booking.status}`
+  const bookingBadge = BOOKING_STATUS_BADGE[booking.status]
+  const paymentBadge = PAYMENT_STATUS_BADGE[booking.paymentStatus]
+  const payoutBadge = booking.payoutStatus ? PAYOUT_STATUS_BADGE[booking.payoutStatus] : null
 
   return (
     <div>
@@ -204,7 +221,7 @@ export default function BookingDetailPage() {
               <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-gray)', marginBottom: 4 }}>Booking ID</p>
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 700, color: 'var(--color-navy)' }}>{booking.id}</p>
             </div>
-            <span className={`badge ${statusClass}`} style={{ textTransform: 'capitalize', fontSize: 13 }}>{booking.status}</span>
+            <span className={bookingBadge.cls} style={{ textTransform: 'capitalize', fontSize: 13 }}>{bookingBadge.label}</span>
             <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
               <p style={{ fontSize: 11, color: 'var(--color-gray)' }}>Session Date</p>
               <p style={{ fontWeight: 600, color: 'var(--color-navy)' }}>{booking.dateTime}</p>
@@ -279,12 +296,16 @@ export default function BookingDetailPage() {
                 <div className="avatar">{booking.teacher.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
                 <div>
                   <p style={{ fontWeight: 600, fontSize: 14 }}>{booking.teacher.name}</p>
-                  <p style={{ fontSize: 12, color: 'var(--color-yellow)' }}>★ {booking.teacher.rating.toFixed(1)}</p>
+                  <p style={{ fontSize: 12, color: booking.teacher.assigned ? 'var(--color-yellow)' : 'var(--color-coral)' }}>
+                    {booking.teacher.assigned ? `★ ${booking.teacher.rating.toFixed(1)}` : 'Teacher not assigned yet'}
+                  </p>
                 </div>
               </div>
               <p style={{ fontSize: 12, color: 'var(--color-gray)', marginBottom: 8 }}>{booking.teacher.phone}</p>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {booking.teacher.specialties.map(s => <span key={s} className="tag">{s}</span>)}
+                {booking.teacher.specialties.length > 0
+                  ? booking.teacher.specialties.map(s => <span key={s} className="tag">{s}</span>)
+                  : <span className="tag tag--gray">Awaiting assignment</span>}
               </div>
             </>
           )}
@@ -296,7 +317,7 @@ export default function BookingDetailPage() {
           {loading ? (
             <>
               <SkeletonLine width="85%" height={14} style={{ marginBottom: 12 }} />
-              {['Category', 'Type', 'Duration', 'Price', 'Razorpay ID'].map((_, i) => (
+              {['Category', 'Type', 'Duration', 'Price', 'Payment Ref', 'Payout'].map((_, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <SkeletonLine width={60} height={12} />
                   <SkeletonLine width={70} height={12} />
@@ -324,8 +345,24 @@ export default function BookingDetailPage() {
                   <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-primary)' }}>{formatInr(booking.activity.price)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                  <span style={{ color: 'var(--color-gray)' }}>Razorpay ID</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-gray)' }}>{booking.razorpayId}</span>
+                  <span style={{ color: 'var(--color-gray)' }}>Payment Ref</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-gray)' }}>{booking.paymentReference}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, alignItems: 'center' }}>
+                  <span style={{ color: 'var(--color-gray)' }}>Payment</span>
+                  <span className={paymentBadge.cls}>{paymentBadge.label}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, alignItems: 'center' }}>
+                  <span style={{ color: 'var(--color-gray)' }}>Payout</span>
+                  {payoutBadge
+                    ? <span className={payoutBadge.cls}>{payoutBadge.label}</span>
+                    : <span className="tag tag--gray">Not released</span>}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                  <span style={{ color: 'var(--color-gray)' }}>Revenue Realized</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-navy)', fontWeight: 600 }}>
+                    {booking.payoutAmount ? formatInr(booking.payoutAmount) : '—'}
+                  </span>
                 </div>
               </div>
             </>
@@ -410,7 +447,7 @@ export default function BookingDetailPage() {
                     <button className="btn btn--ghost" style={{ justifyContent: 'center' }} onClick={() => { setConfirmAction('cancel'); setActionError('') }} type="button">
                       Cancel Booking
                     </button>
-                    <button className="btn btn--danger" style={{ justifyContent: 'center' }} onClick={() => { setConfirmAction('refund'); setActionError('') }} type="button">
+                    <button className="btn btn--danger" style={{ justifyContent: 'center' }} onClick={() => { setConfirmAction('refund'); setActionError('') }} type="button" disabled={booking.paymentStatus === 'refunded'}>
                       Refund Payment
                     </button>
                   </>

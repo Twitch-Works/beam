@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  APP_MODE: z.enum(['development', 'test', 'production']).default('development'),
 
   DATABASE_URL: z.string().url(),
 
@@ -37,6 +38,8 @@ const env = parsed.data
 
 export const config = {
   nodeEnv: env.NODE_ENV,
+  appMode: env.APP_MODE,
+  isDevelopment: env.APP_MODE === 'development',
   isProduction: env.NODE_ENV === 'production',
   port: env.PORT,
 

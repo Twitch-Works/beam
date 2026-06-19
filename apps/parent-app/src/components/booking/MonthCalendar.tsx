@@ -11,17 +11,19 @@ interface MonthCalendarProps {
   selectedDate: string | null      // ISO yyyy-mm-dd
   onSelectDate: (iso: string) => void
   minDate?: string                 // ISO, defaults to today
+  enabledDates?: string[]          // if provided, only these dates are selectable
 }
 
 function toISO(y: number, m: number, d: number) {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
-export function MonthCalendar({ selectedDate, onSelectDate, minDate }: MonthCalendarProps) {
+export function MonthCalendar({ selectedDate, onSelectDate, minDate, enabledDates }: MonthCalendarProps) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const todayISO = toISO(today.getFullYear(), today.getMonth(), today.getDate())
   const floor = minDate ?? todayISO
+  const enabledDateSet = enabledDates ? new Set(enabledDates) : null
 
   const [viewYear, setViewYear]   = useState(today.getFullYear())
   const [viewMonth, setViewMonth] = useState(today.getMonth()) // 0-indexed
@@ -76,6 +78,8 @@ export function MonthCalendar({ selectedDate, onSelectDate, minDate }: MonthCale
           if (day === null) return <View key={`empty-${i}`} style={styles.cell} />
           const iso = toISO(viewYear, viewMonth, day)
           const isPast = iso < floor
+          const isEnabled = enabledDateSet ? enabledDateSet.has(iso) : !isPast
+          const isDisabled = isPast || !isEnabled
           const isSelected = iso === selectedDate
           const isToday = iso === todayISO
 
@@ -83,8 +87,8 @@ export function MonthCalendar({ selectedDate, onSelectDate, minDate }: MonthCale
             <TouchableOpacity
               key={iso}
               style={styles.cell}
-              onPress={() => !isPast && onSelectDate(iso)}
-              disabled={isPast}
+              onPress={() => !isDisabled && onSelectDate(iso)}
+              disabled={isDisabled}
               activeOpacity={0.7}
             >
               <View style={[
@@ -94,7 +98,7 @@ export function MonthCalendar({ selectedDate, onSelectDate, minDate }: MonthCale
               ]}>
                 <Text style={[
                   styles.dateText,
-                  isPast && styles.dateTextPast,
+                  isDisabled && styles.dateTextPast,
                   isSelected && styles.dateTextSelected,
                   isToday && !isSelected && styles.dateTextToday,
                 ]}>

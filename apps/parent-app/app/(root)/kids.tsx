@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native'
 import { Image } from 'expo-image'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -7,9 +7,9 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import { useChildren } from '@/hooks/useChildren'
-import { useBookings } from '@/hooks/useBookings'
 import { useActivities } from '@/hooks/useActivities'
 import { useChildProgress } from '@/hooks/useChildProgress'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import { EmptyState } from '@/components/EmptyState'
 import { Skeleton } from '@/components/Skeleton'
 import { Avatar } from '@/components/Avatar'
@@ -27,9 +27,9 @@ function skillLabel(score: number): string {
 
 export default function KidsScreen() {
   const insets = useSafeAreaInsets()
-  const { data, isLoading } = useChildren()
+  const { data, isLoading, refetch: refetchChildren } = useChildren()
   const children: Child[] = data?.items ?? []
-  const { data: activitiesData } = useActivities({ limit: 4 })
+  const { data: activitiesData, refetch: refetchActivities } = useActivities({ limit: 4 })
   const recommendedActivities = activitiesData?.items?.slice(0, 4) ?? []
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -39,7 +39,14 @@ export default function KidsScreen() {
     return children[0] ?? null
   }, [selectedId, children])
 
-  const { data: progress } = useChildProgress(selectedChild?.id)
+  const { data: progress, refetch: refetchProgress } = useChildProgress(selectedChild?.id)
+  const { refreshing, onRefresh } = usePullToRefresh(async () => {
+    await Promise.all([
+      refetchChildren(),
+      refetchActivities(),
+      selectedChild?.id ? refetchProgress() : Promise.resolve(),
+    ])
+  })
 
   const sessionsForChild = progress?.totalSessions ?? 0
   const level = LEVELS[Math.min(Math.floor(sessionsForChild / 2), LEVELS.length - 1)]
@@ -80,6 +87,9 @@ export default function KidsScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
         >
           {/* ── Child selector ── */}
           <ChildSelector

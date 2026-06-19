@@ -21,24 +21,24 @@ function formatScheduled(iso: string | null) {
 }
 
 export function isLiveBooking(booking: ApiBooking): boolean {
-  if (!booking.scheduledAt || booking.status !== 'confirmed') return false
+  if (!booking.scheduledAt || !['confirmed', 'in_progress'].includes(booking.status)) return false
   const sessionStart = new Date(booking.scheduledAt).getTime()
   const now = Date.now()
   return now >= sessionStart - 60 * 60 * 1000 && now <= sessionStart + 2 * 60 * 60 * 1000
 }
 
 function RatingModal({ booking, onClose, onSubmitted }: { booking: ApiBooking; onClose: () => void; onSubmitted: () => void }) {
-  const { user } = useAuth()
+  const { parentUserId } = useAuth()
   const [rating, setRating] = useState(0)
   const [comment, setComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async () => {
     if (rating === 0) { Alert.alert('Select a rating', 'Please tap a star to rate your session.'); return }
-    if (!user) return
+    if (!parentUserId) return
     setSubmitting(true)
     try {
-      await parentApi.bookings.submitFeedback(booking.id, user.id, rating, comment.trim() || undefined)
+      await parentApi.bookings.submitFeedback(booking.id, parentUserId, rating, comment.trim() || undefined)
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
       onSubmitted()
     } catch (err: any) {
@@ -108,6 +108,11 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
   const live = isLiveBooking(booking)
   const locationLabel = booking.sessionType === 'home' ? 'Home' : 'Online'
 
+  const openBookingDetails = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    router.push(`/(root)/booking/${booking.id}`)
+  }
+
   return (
     <View style={styles.card}>
       {/* Live strip */}
@@ -119,7 +124,11 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
       )}
 
       {/* Card body */}
-      <View style={styles.cardBody}>
+      <TouchableOpacity
+        style={styles.cardBody}
+        onPress={openBookingDetails}
+        activeOpacity={0.85}
+      >
         <Image
           source={booking.activityImage ? { uri: booking.activityImage } : require('../../../assets/images/icon.png')}
           style={styles.thumb}
@@ -151,7 +160,7 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
             <Text style={styles.metaText}>{locationLabel} · Bandra West</Text>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
 
       {/* ── Actions by status ── */}
 
@@ -159,11 +168,16 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
       {live && (
         <TouchableOpacity
           style={styles.trackBtn}
-          onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+            router.push(`/(root)/booking/${booking.id}`)
+          }}
           activeOpacity={0.88}
         >
-          <Ionicons name="navigate" size={16} color={colors.white} />
-          <Text style={styles.trackBtnText}>Track Session</Text>
+          <Ionicons name="keypad" size={16} color={colors.white} />
+          <Text style={styles.trackBtnText}>
+            {booking.status === 'in_progress' ? 'Open Class Actions' : 'Confirm With OTP'}
+          </Text>
         </TouchableOpacity>
       )}
 
@@ -172,7 +186,11 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Alert.alert('Reschedule', 'Rescheduling coming soon.') }}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+              if (!booking.activityId) return
+              router.push({ pathname: `/(root)/slots/${booking.activityId}`, params: { bookingId: booking.id } })
+            }}
             activeOpacity={0.8}
           >
             <Text style={styles.actionBtnTextTeal}>Reschedule</Text>
@@ -184,6 +202,18 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
             activeOpacity={0.8}
           >
             <Text style={styles.actionBtnTextGray}>Support</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {booking.status === 'in_progress' && (
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.bookAgainBtn]}
+            onPress={() => router.push(`/(root)/booking/${booking.id}`)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.bookAgainBtnText}>Complete Class</Text>
           </TouchableOpacity>
         </View>
       )}

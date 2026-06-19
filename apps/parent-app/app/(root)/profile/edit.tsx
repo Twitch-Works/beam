@@ -10,7 +10,7 @@ import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 
 export default function ParentProfileEditScreen() {
   const insets = useSafeAreaInsets()
-  const { user } = useAuth()
+  const { user, parentUserId } = useAuth()
 
   const [firstName, setFirstName] = React.useState((user?.user_metadata?.firstName as string) ?? '')
   const [lastName,  setLastName]  = React.useState((user?.user_metadata?.lastName  as string) ?? '')
@@ -23,11 +23,11 @@ export default function ParentProfileEditScreen() {
   const canSave = firstName.trim() && !isSaving
 
   const handleSave = async () => {
-    if (!user?.id || !canSave) return
+    if (!parentUserId || !canSave) return
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     setIsSaving(true)
     try {
-      await parentApi.users.updateProfile({ userId: user.id, firstName: firstName.trim(), lastName: lastName.trim(), city: city.trim() })
+      await parentApi.users.updateProfile({ userId: parentUserId, firstName: firstName.trim(), lastName: lastName.trim(), city: city.trim() })
       router.back()
     } catch {
       Alert.alert('Error', 'Could not save changes. Please try again.')

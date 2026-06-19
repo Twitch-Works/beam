@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -12,9 +12,15 @@ import { ActivitySummaryBar } from '@/components/booking/ActivitySummaryBar'
 import { MonthCalendar } from '@/components/booking/MonthCalendar'
 import type { Slot } from '@/lib/api'
 
+const APP_MODE = process.env.EXPO_PUBLIC_APP_MODE ?? 'development'
+
 type WizardStep = 1 | 2 // 1 = Date, 2 = Time
 
-function todayISO() { return new Date().toISOString().split('T')[0] }
+function addDaysISO(days: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return date.toISOString().split('T')[0]
+}
 
 function formatTime(time: string) {
   const [h, m] = time.split(':').map(Number)
@@ -48,14 +54,41 @@ function groupSlots(slots: Slot[]): { period: Period; slots: Slot[] }[] {
 
 export default function SlotPickerScreen() {
   const insets = useSafeAreaInsets()
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, bookingId, teacherId, teacherName } = useLocalSearchParams<{
+    id: string
+    bookingId?: string
+    teacherId?: string
+    teacherName?: string
+  }>()
+  const bookingWindowStart = addDaysISO(APP_MODE === 'development' ? 0 : 1)
 
   const { data: activityData } = useActivity(id ?? null)
-  const { data: slotsData, isLoading: loadingSlots } = useSlots(id ?? null, todayISO(), 30)
+  const { data: slotsData, isLoading: loadingSlots } = useSlots(id ?? null, bookingWindowStart, 15, teacherId ?? null)
 
   const [step, setStep]               = useState<WizardStep>(1)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
+
+  const availableDates = useMemo(() => {
+    if (!slotsData?.slots) return []
+    return Object.entries(slotsData.slots)
+      .filter(([, daySlots]) => daySlots.some(slot => slot.isAvailable))
+      .map(([date]) => date)
+      .sort()
+  }, [slotsData])
+
+  useEffect(() => {
+    if (availableDates.length === 0) {
+      if (selectedDate !== null) setSelectedDate(null)
+      if (selectedSlotId !== null) setSelectedSlotId(null)
+      return
+    }
+
+    if (!selectedDate || !availableDates.includes(selectedDate)) {
+      setSelectedDate(availableDates[0])
+      setSelectedSlotId(null)
+    }
+  }, [availableDates, selectedDate, selectedSlotId])
 
   const slots: Slot[] = slotsData?.slots[selectedDate ?? ''] ?? []
   const groups = useMemo(() => groupSlots(slots), [slots])
@@ -86,6 +119,7 @@ export default function SlotPickerScreen() {
     router.push({
       pathname: `/(root)/payment/${id}`,
       params: {
+        bookingId: bookingId ?? '',
         slotId:   selectedSlot.id,
         date:     selectedDate,
         time:     formatTime(selectedSlot.startTime),
@@ -103,12 +137,18 @@ export default function SlotPickerScreen() {
         {/* Activity mini-card */}
         <ActivitySummaryBar
           title={activity?.title ?? '—'}
-          teacherName={null}
+          teacherName={teacherName ?? null}
           durationMins={activity?.sessionDurationMins}
           sessionType={activity?.sessionType}
           price={price}
           imageUrl={activity?.imageUrl}
         />
+        <View style={styles.noticeCard}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
+          <Text style={styles.noticeText}>
+            Sessions can be booked {APP_MODE === 'development' ? 'today through 15 days' : '1 to 15 days'} in advance. Only future time slots are shown. Reschedules are allowed up to 24 hours before class.
+          </Text>
+        </View>
 
         {/* ── Step 1: Date ── */}
         {step === 1 && (
@@ -116,7 +156,12 @@ export default function SlotPickerScreen() {
             <MonthCalendar
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
+              minDate={bookingWindowStart}
+              enabledDates={availableDates}
             />
+            {!loadingSlots && availableDates.length === 0 && (
+              <Text style={styles.emptyText}>No bookable dates are available right now.</Text>
+            )}
           </View>
         )}
 
@@ -133,7 +178,11 @@ export default function SlotPickerScreen() {
             {loadingSlots ? (
               <Text style={styles.loadingText}>Loading slots…</Text>
             ) : groups.length === 0 ? (
-              <Text style={styles.emptyText}>No slots available on this date.</Text>
+              <Text style={styles.emptyText}>
+                {teacherName
+                  ? `No slots are available for ${teacherName} on this date.`
+                  : 'No slots available on this date.'}
+              </Text>
             ) : (
               groups.map(({ period, slots: periodSlots }) => (
                 <View key={period} style={styles.periodGroup}>
@@ -195,8 +244,8 @@ export default function SlotPickerScreen() {
             disabled={!selectedSlot}
             activeOpacity={0.88}
           >
-            <Text style={[styles.ctaBtnText, !selectedSlot && styles.ctaBtnTextDisabled]}>
-              Continue to Payment
+              <Text style={[styles.ctaBtnText, !selectedSlot && styles.ctaBtnTextDisabled]}>
+              {bookingId ? 'Review Reschedule' : 'Continue to Payment'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -215,6 +264,25 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
     ...shadows.card,
+  },
+  noticeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.mint,
+    marginHorizontal: spacing.md,
+    marginTop: -spacing.xs,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary + '22',
+  },
+  noticeText: {
+    flex: 1,
+    fontSize: fontSize.caption,
+    fontFamily: 'Nunito-SemiBold',
+    color: colors.primary,
+    lineHeight: 18,
   },
 
   // Step 2 — time

@@ -6,6 +6,7 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }>
   pending:     { label: 'Pending',     bg: colors.statusUpcomingBg,     text: colors.statusUpcomingText },
   upcoming:    { label: 'Upcoming',    bg: colors.statusUpcomingBg,     text: colors.statusUpcomingText },
   confirmed:   { label: 'Confirmed',   bg: colors.statusConfirmedBg,   text: colors.statusConfirmedText },
+  in_progress: { label: 'In Progress', bg: colors.statusConfirmedBg,   text: colors.statusConfirmedText },
   completed:   { label: 'Completed',   bg: colors.statusCompletedBg,   text: colors.statusCompletedText },
   cancelled:   { label: 'Cancelled',   bg: colors.statusCancelledBg,   text: colors.statusCancelledText },
   rescheduled: { label: 'Rescheduled', bg: colors.statusRescheduledBg, text: colors.statusRescheduledText },

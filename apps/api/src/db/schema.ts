@@ -20,7 +20,7 @@ export const userRoleEnum = pgEnum('user_role', ['parent', 'teacher', 'admin', '
 export const verificationStatusEnum = pgEnum('verification_status', ['pending', 'verified', 'rejected'])
 export const sessionTypeEnum = pgEnum('session_type', ['1:1', 'group'])
 export const activityStatusEnum = pgEnum('activity_status', ['draft', 'published', 'archived'])
-export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed', 'completed', 'cancelled', 'rescheduled'])
+export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rescheduled'])
 export const paymentStatusEnum = pgEnum('payment_status', ['pending', 'success', 'failed', 'refunded'])
 export const paymentGatewayEnum = pgEnum('payment_gateway', ['razorpay', 'upi', 'card', 'netbanking', 'wallet'])
 export const payoutStatusEnum = pgEnum('payout_status', ['queued', 'dispatched', 'settled', 'failed'])
@@ -176,6 +176,15 @@ export const bookings = pgTable('bookings', {
   discountCode: text('discount_code'),
   notes: text('notes'),
   scheduledAt: timestamp('scheduled_at'),
+  confirmedAt: timestamp('confirmed_at'),
+  teacherOtp: text('teacher_otp'),
+  teacherOtpGeneratedAt: timestamp('teacher_otp_generated_at'),
+  teacherOtpVerifiedAt: timestamp('teacher_otp_verified_at'),
+  completedAt: timestamp('completed_at'),
+  parentCompletedAt: timestamp('parent_completed_at'),
+  payoutQueuedAt: timestamp('payout_queued_at'),
+  payoutReleasedAt: timestamp('payout_released_at'),
+  lastWhatsAppSentAt: timestamp('last_whatsapp_sent_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

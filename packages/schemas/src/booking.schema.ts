@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const BookingStatusSchema = z.enum(['pending', 'confirmed', 'completed', 'cancelled'])
+export const BookingStatusSchema = z.enum(['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rescheduled'])
 export type BookingStatus = z.infer<typeof BookingStatusSchema>
 
 // 1. Base entity schema (mirrors DB columns)
@@ -16,6 +16,15 @@ export const BookingSchema = z.object({
   totalAmount: z.number().positive(),
   discountAmount: z.number().min(0).default(0),
   notes: z.string().max(500).nullable().optional(),
+  confirmedAt: z.date().nullable().optional(),
+  teacherOtp: z.string().length(6).nullable().optional(),
+  teacherOtpGeneratedAt: z.date().nullable().optional(),
+  teacherOtpVerifiedAt: z.date().nullable().optional(),
+  completedAt: z.date().nullable().optional(),
+  parentCompletedAt: z.date().nullable().optional(),
+  payoutQueuedAt: z.date().nullable().optional(),
+  payoutReleasedAt: z.date().nullable().optional(),
+  lastWhatsAppSentAt: z.date().nullable().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
 })
@@ -50,3 +59,17 @@ export const UpdateBookingStatusSchema = z.object({
   reason: z.string().optional(),
 })
 export type UpdateBookingStatus = z.infer<typeof UpdateBookingStatusSchema>
+
+export const RescheduleBookingInputSchema = z.object({
+  bookingId: z.string().uuid(),
+  parentId: z.string().uuid(),
+  newSlotId: z.string().uuid(),
+})
+export type RescheduleBookingInput = z.infer<typeof RescheduleBookingInputSchema>
+
+export const VerifyBookingOtpInputSchema = z.object({
+  bookingId: z.string().uuid(),
+  parentId: z.string().uuid(),
+  otp: z.string().length(6),
+})
+export type VerifyBookingOtpInput = z.infer<typeof VerifyBookingOtpInputSchema>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, TextInput, Alert,
@@ -16,10 +16,6 @@ import { parentApi } from '@/lib/api'
 import { BookingWizardHeader } from '@/components/booking/BookingWizardHeader'
 import { ActivitySummaryBar } from '@/components/booking/ActivitySummaryBar'
 
-// react-native-razorpay requires a native build — not available in Expo Go
-let RazorpayCheckout: any = null
-try { RazorpayCheckout = require('react-native-razorpay').default } catch (_) {}
-
 type PaymentMethod = 'upi' | 'card'
 
 function formatDisplayDate(iso: string) {
@@ -33,10 +29,10 @@ function shortId(): string {
 
 export default function PaymentScreen() {
   const insets = useSafeAreaInsets()
-  const { id, slotId, date, time, price: priceParam } =
-    useLocalSearchParams<{ id: string; slotId: string; date: string; time: string; price: string }>()
+  const { id, bookingId: existingBookingId, slotId, date, time, price: priceParam } =
+    useLocalSearchParams<{ id: string; bookingId?: string; slotId: string; date: string; time: string; price: string }>()
 
-  const { user } = useAuth()
+  const { user, parentUserId } = useAuth()
   const { data: activityData } = useActivity(id ?? null)
   const { data: childrenData } = useChildren()
   const firstChild = childrenData?.items[0] ?? null
@@ -44,17 +40,14 @@ export default function PaymentScreen() {
   const sessionPrice  = priceParam ? parseFloat(priceParam) : (activityData ? parseFloat(activityData.pricePerSession) : 0)
   const activity      = activityData
   const activityTitle = activity?.title ?? '—'
-  const contactPhone  = typeof user?.phone === 'string' && user.phone.length > 0
-    ? user.phone
-    : ((user?.user_metadata?.phone as string | undefined) ?? '')
-
   const [method, setMethod]           = useState<PaymentMethod>('upi')
   const [couponCode, setCouponCode]   = useState('')
   const [couponApplied, setCouponApplied] = useState(false)
   const [couponError, setCouponError] = useState('')
   const [discount, setDiscount]       = useState(0)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [bookingId, setBookingId]     = useState<string | null>(null)
+  const [completedBookingId, setCompletedBookingId] = useState<string | null>(null)
+  const [mockPaymentReference, setMockPaymentReference] = useState<string | null>(null)
 
   const total = sessionPrice - discount
 
@@ -73,55 +66,37 @@ export default function PaymentScreen() {
   }
 
   const handlePay = async () => {
-    if (isProcessing || !user || !id) return
+    if (isProcessing || !user || !parentUserId || !id) return
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     setIsProcessing(true)
     try {
       if (!firstChild?.id) { Alert.alert('No child profile', 'Add a child from the Kids tab first.'); return }
       if (!slotId) { Alert.alert('Missing slot', 'Go back and select a slot.'); return }
 
-      const { booking } = await parentApi.bookings.create({
-        parentId: user.id, childId: firstChild.id,
-        activityId: id, slotId,
-        totalAmount: total,
-        discountCode: couponApplied ? couponCode : undefined,
-        discountAmount: discount,
-      })
-
-      const { orderId, amount: orderAmount, currency, keyId } =
-        await parentApi.payments.createOrder(booking.id)
-
-      if (!RazorpayCheckout) {
-        Alert.alert('Native build required', 'Razorpay is not available in Expo Go. Use a development build to test payments.')
-        return
+      if (existingBookingId) {
+        const { booking } = await parentApi.bookings.reschedule(existingBookingId, parentUserId, slotId)
+        setCompletedBookingId(booking.id)
+        setMockPaymentReference(null)
+      } else {
+        const { booking, payment } = await parentApi.bookings.create({
+          parentId: parentUserId, childId: firstChild.id,
+          activityId: id, slotId,
+          totalAmount: total,
+          discountCode: couponApplied ? couponCode : undefined,
+          discountAmount: discount,
+        })
+        setCompletedBookingId(booking.id)
+        setMockPaymentReference(payment.gatewayPaymentId ?? payment.id)
       }
-
-      const data = await RazorpayCheckout.open({
-        description: activityTitle, currency,
-        key: keyId, amount: String(orderAmount), name: 'Beam',
-        order_id: orderId,
-        prefill: { contact: contactPhone, name: (user.user_metadata?.firstName as string) ?? '' },
-        theme: { color: '#1787A6' },
-      })
-
-      await parentApi.payments.verifyPayment(booking.id, {
-        razorpayPaymentId: data.razorpay_payment_id,
-        razorpayOrderId:   data.razorpay_order_id,
-        razorpaySignature: data.razorpay_signature,
-      })
-
-      setBookingId(booking.id)
     } catch (err: any) {
-      if (err?.code !== 'PAYMENT_CANCELLED') {
-        Alert.alert('Payment failed', err?.description ?? err?.message ?? 'Something went wrong.')
-      }
+      Alert.alert(existingBookingId ? 'Reschedule failed' : 'Booking failed', err?.description ?? err?.message ?? 'Something went wrong.')
     } finally {
       setIsProcessing(false)
     }
   }
 
   // ── Success screen ──
-  if (bookingId) {
+  if (completedBookingId) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <BookingWizardHeader step={4} totalSteps={3} onBack={() => {}} />
@@ -132,9 +107,11 @@ export default function PaymentScreen() {
               <Ionicons name="checkmark" size={40} color={colors.primary} />
             </View>
           </View>
-          <Text style={styles.successTitle}>Booking Confirmed!</Text>
+          <Text style={styles.successTitle}>{existingBookingId ? 'Reschedule Requested!' : 'Booking Confirmed!'}</Text>
           <Text style={styles.successSubtitle}>
-            Your session has been booked. You'll receive a confirmation shortly.
+            {existingBookingId
+              ? "Your new slot is pending teacher confirmation."
+              : "Your session has been booked with a mock payment capture. You'll receive a confirmation shortly."}
           </Text>
 
           {/* Receipt card */}
@@ -155,6 +132,7 @@ export default function PaymentScreen() {
               { label: 'Date & Time', value: `${date ? formatDisplayDate(date) : '—'}, ${time ?? '—'}` },
               { label: 'Location',    value: 'Your Home · ' + ((user?.user_metadata?.city as string) ?? '') },
               { label: 'Amount Paid', value: `₹${total}` },
+              ...(mockPaymentReference ? [{ label: 'Mock Payment', value: mockPaymentReference }] : []),
               { label: 'Booking ID',  value: shortId() },
             ].map(row => (
               <View key={row.label} style={styles.receiptRow}>
@@ -194,7 +172,7 @@ export default function PaymentScreen() {
 
         {/* Booking Summary */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Booking Summary</Text>
+          <Text style={styles.cardTitle}>{existingBookingId ? 'Reschedule Summary' : 'Booking Summary'}</Text>
           {[
             { icon: 'calendar-outline',  label: 'Date',  value: date ? formatDisplayDate(date) + ' ' + new Date().getFullYear() : '—' },
             { icon: 'time-outline',      label: 'Time',  value: time ?? '—' },
@@ -287,7 +265,7 @@ export default function PaymentScreen() {
         {/* Trust line */}
         <View style={styles.trustLine}>
           <Ionicons name="shield-checkmark-outline" size={14} color={colors.gray} />
-          <Text style={styles.trustText}>100% secure payment · Free cancellation 4hrs before</Text>
+          <Text style={styles.trustText}>Mock payment only · teacher confirmation required · reschedule up to 24hrs before</Text>
         </View>
       </ScrollView>
 
@@ -299,7 +277,9 @@ export default function PaymentScreen() {
           disabled={isProcessing}
           activeOpacity={0.88}
         >
-          <Text style={styles.ctaBtnText}>{isProcessing ? 'Processing…' : `Pay ₹${total}`}</Text>
+          <Text style={styles.ctaBtnText}>
+            {isProcessing ? 'Processing…' : existingBookingId ? 'Request Reschedule' : `Book for ₹${total}`}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>

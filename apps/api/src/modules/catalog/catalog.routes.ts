@@ -3,6 +3,23 @@ import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
 import { eq, and, ilike, or, desc, count, avg, gte, lte, sql } from 'drizzle-orm'
 
+const APP_MODE = process.env.APP_MODE ?? process.env.NODE_ENV ?? 'development'
+const MIN_BOOKING_HOURS = APP_MODE === 'development' ? 0 : 24
+const MAX_BOOKING_HOURS = 24 * 15
+
+function parseSlotDateTime(slot: { date: string; startTime: string }) {
+  return new Date(`${slot.date}T${slot.startTime}`)
+}
+
+function getHoursUntil(date: Date) {
+  return (date.getTime() - Date.now()) / (1000 * 60 * 60)
+}
+
+function isBookableSlot(slot: { date: string; startTime: string }) {
+  const hoursUntil = getHoursUntil(parseSlotDateTime(slot))
+  return hoursUntil >= MIN_BOOKING_HOURS && hoursUntil <= MAX_BOOKING_HOURS
+}
+
 // Haversine distance in km between two lat/lng points
 function haversineExpr(lat: number, lng: number) {
   return sql<number>`
@@ -116,26 +133,68 @@ export async function catalogRoutes(fastify: FastifyInstance) {
       .from(schema.reviews)
       .where(eq(schema.reviews.activityId, id))
 
-    const firstSlot = await db.query.slots.findFirst({
-      where: eq(schema.slots.activityId, id),
-    })
+    const teacherRows = await db
+      .select({
+        id: schema.users.id,
+        firstName: schema.users.firstName,
+        lastName: schema.users.lastName,
+        bio: schema.teachers.bio,
+        city: schema.users.city,
+        verificationStatus: schema.teachers.verificationStatus,
+        specializations: schema.teachers.specializations,
+      })
+      .from(schema.slots)
+      .innerJoin(schema.users, eq(schema.slots.teacherId, schema.users.id))
+      .leftJoin(schema.teachers, eq(schema.teachers.userId, schema.users.id))
+      .where(eq(schema.slots.activityId, id))
+      .groupBy(
+        schema.users.id,
+        schema.users.firstName,
+        schema.users.lastName,
+        schema.users.city,
+        schema.teachers.bio,
+        schema.teachers.verificationStatus,
+        schema.teachers.specializations,
+      )
+      .orderBy(schema.users.firstName, schema.users.lastName)
+
+    const teachers = await Promise.all(
+      teacherRows.map(async (teacherRow) => {
+        const [{ totalSessions }] = await db
+          .select({ totalSessions: count(schema.bookings.id) })
+          .from(schema.bookings)
+          .where(and(
+            eq(schema.bookings.teacherId, teacherRow.id),
+            eq(schema.bookings.status, 'completed'),
+          ))
+
+        return {
+          ...teacherRow,
+          specializations: teacherRow.specializations ?? [],
+          verificationStatus: teacherRow.verificationStatus ?? 'pending',
+          totalSessions: Number(totalSessions ?? 0),
+        }
+      }),
+    )
 
     return reply.send({
       ...activity,
       avgRating:   ratingRow?.avgRating ?? null,
       reviewCount: Number(ratingRow?.reviewCount ?? 0),
-      teacherId:   firstSlot?.teacherId ?? null,
+      teacherId:   teachers[0]?.id ?? null,
+      teachers,
     })
   })
 
   // GET /activities/:id/slots?from=YYYY-MM-DD&days=7
   fastify.get<{
     Params: { id: string }
-    Querystring: { from?: string; days?: string }
+    Querystring: { from?: string; days?: string; teacherId?: string }
   }>('/activities/:id/slots', async (req, reply) => {
     const { id } = req.params
-    const days    = Math.min(14, parseInt(req.query.days ?? '7'))
+    const days    = Math.min(15, parseInt(req.query.days ?? '7'))
     const fromStr = req.query.from ?? new Date().toISOString().split('T')[0]
+    const { teacherId } = req.query
 
     const from = new Date(fromStr)
     const to   = new Date(from)
@@ -156,15 +215,21 @@ export async function catalogRoutes(fastify: FastifyInstance) {
       .leftJoin(schema.users, eq(schema.slots.teacherId, schema.users.id))
       .where(and(
         eq(schema.slots.activityId, id),
+        ...(teacherId ? [eq(schema.slots.teacherId, teacherId)] : []),
         eq(schema.slots.isAvailable, true),
         gte(schema.slots.date, fromStr),
         lte(schema.slots.date, toStr),
       ))
       .orderBy(schema.slots.date, schema.slots.startTime)
 
+    const bookableRows = rows.filter((row) => isBookableSlot({
+      date: row.date as string,
+      startTime: row.startTime as string,
+    }))
+
     // Group by date
     const byDate: Record<string, typeof rows> = {}
-    for (const row of rows) {
+    for (const row of bookableRows) {
       const d = row.date as string
       if (!byDate[d]) byDate[d] = []
       byDate[d].push(row)

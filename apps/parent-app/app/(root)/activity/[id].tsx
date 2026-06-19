@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl } from 'react-native'
 import { Image } from 'expo-image'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -8,10 +8,11 @@ import * as Haptics from 'expo-haptics'
 import { LinearGradient } from 'expo-linear-gradient'
 import { colors, spacing, radius, fontSize, fontWeight, shadows } from '@/constants/theme'
 import { useActivity } from '@/hooks/useActivities'
-import { useTeacher } from '@/hooks/useTeacher'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import { Skeleton } from '@/components/Skeleton'
 import { Button } from '@/components/Button'
 import { Avatar } from '@/components/Avatar'
+import type { ActivityTeacher } from '@/lib/api'
 
 const { width } = Dimensions.get('window')
 const HERO_HEIGHT = 280
@@ -25,13 +26,34 @@ const STATIC_FAQS = [
 export default function ActivityDetailScreen() {
   const insets = useSafeAreaInsets()
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { data: activity, isLoading, isError } = useActivity(id ?? null)
-  const { data: teacher, isLoading: teacherLoading } = useTeacher(activity?.teacherId ?? null)
+  const { data: activity, isLoading, isError, refetch: refetchActivity } = useActivity(id ?? null)
   const [isLiked, setIsLiked] = useState(false)
+  const [selectedTeacherIndex, setSelectedTeacherIndex] = useState(0)
+  const { refreshing, onRefresh } = usePullToRefresh(async () => {
+    await refetchActivity()
+  })
+
+  useEffect(() => {
+    if (!activity?.teachers?.length) {
+      if (selectedTeacherIndex !== 0) setSelectedTeacherIndex(0)
+      return
+    }
+
+    if (selectedTeacherIndex > activity.teachers.length - 1) {
+      setSelectedTeacherIndex(0)
+    }
+  }, [activity?.teachers, selectedTeacherIndex])
 
   const handleBook = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-    router.push(`/(root)/slots/${id}`)
+    const selectedTeacher = activity?.teachers?.[selectedTeacherIndex] ?? null
+    router.push({
+      pathname: `/(root)/slots/${id}`,
+      params: {
+        teacherId: selectedTeacher?.id ?? '',
+        teacherName: selectedTeacher ? `${selectedTeacher.firstName} ${selectedTeacher.lastName ?? ''}`.trim() : '',
+      },
+    })
   }
 
   if (isLoading) return <LoadingSkeleton insetTop={insets.top} />
@@ -51,6 +73,7 @@ export default function ActivityDetailScreen() {
   const rating = activity.avgRating ? parseFloat(activity.avgRating) : null
   const price = parseFloat(activity.pricePerSession).toFixed(0)
   const isAtHome = activity.sessionType === 'home'
+  const teachers = activity.teachers ?? []
 
   // Derive "learns" items from preparationNotes or fall back to tags
   const learnsItems: string[] = activity.preparationNotes
@@ -63,7 +86,13 @@ export default function ActivityDetailScreen() {
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <ScrollView showsVerticalScrollIndicator={false} bounces>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        bounces
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+      >
 
         {/* ── Hero ── */}
         <View style={styles.heroContainer}>
@@ -137,7 +166,11 @@ export default function ActivityDetailScreen() {
           </View>
 
           {/* Teacher card */}
-          <TeacherCard teacher={teacher} isLoading={teacherLoading} />
+          <TeacherCard
+            teachers={teachers}
+            selectedIndex={selectedTeacherIndex}
+            onChangeIndex={setSelectedTeacherIndex}
+          />
 
           {/* About */}
           <SectionHeading>About this activity</SectionHeading>
@@ -222,7 +255,13 @@ export default function ActivityDetailScreen() {
           <Text style={styles.priceLabel}>Per session</Text>
           <Text style={styles.priceLarge}>₹{price}</Text>
         </View>
-        <Button label="Book Now" variant="primary" fullWidth={false} onPress={handleBook} />
+        <Button
+          label="Book Now"
+          variant="primary"
+          fullWidth={false}
+          onPress={handleBook}
+          disabled={teachers.length === 0}
+        />
       </View>
     </View>
   )
@@ -236,42 +275,86 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <Text style={styles.sectionHeading}>{children}</Text>
 }
 
-function TeacherCard({ teacher, isLoading }: { teacher: any; isLoading: boolean }) {
-  if (isLoading) {
+function TeacherCard({
+  teachers,
+  selectedIndex,
+  onChangeIndex,
+}: {
+  teachers: ActivityTeacher[]
+  selectedIndex: number
+  onChangeIndex: (index: number) => void
+}) {
+  if (teachers.length === 0) {
     return (
       <View style={styles.teacherCard}>
-        <Skeleton width={52} height={52} radius={radius.avatar} />
-        <View style={{ flex: 1, gap: 6 }}>
-          <Skeleton width="50%" height={16} />
-          <Skeleton width="70%" height={12} />
-          <Skeleton width="90%" height={12} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.teacherName}>No teacher assigned yet</Text>
+          <Text style={styles.teacherBio}>Slots will appear once a teacher is assigned to this activity.</Text>
         </View>
       </View>
     )
   }
-  if (!teacher) return null
+
+  const teacher = teachers[selectedIndex] ?? teachers[0]
+  if (!teacher) {
+    return (
+      <View style={styles.teacherCard}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.teacherName}>No teacher assigned yet</Text>
+        </View>
+      </View>
+    )
+  }
 
   const yearsExp = teacher.totalSessions > 0
     ? `${Math.max(1, Math.floor(teacher.totalSessions / 20))} years experience`
     : null
+  const teacherCountLabel = `${selectedIndex + 1}/${teachers.length}`
+  const specializations = teacher.specializations.slice(0, 2).join(' · ')
 
   return (
     <View style={styles.teacherCard}>
-      <View>
-        <Avatar firstName={teacher.firstName} lastName={teacher.lastName ?? undefined} size={52} colorIndex={0} />
-        <View style={styles.verifiedDot}>
-          <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+      <View style={styles.teacherHeaderRow}>
+        <View style={styles.teacherProfileRow}>
+          <View>
+            <Avatar firstName={teacher.firstName} lastName={teacher.lastName ?? undefined} size={52} colorIndex={0} />
+            {teacher.verificationStatus === 'verified' && (
+              <View style={styles.verifiedDot}>
+                <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+              </View>
+            )}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.teacherName}>{teacher.firstName} {teacher.lastName ?? ''}</Text>
+            <Text style={styles.teacherMeta}>
+              {[yearsExp, teacher.verificationStatus === 'verified' ? 'Verified' : null].filter(Boolean).join(' · ')}
+            </Text>
+            {!!specializations && <Text style={styles.teacherMeta}>{specializations}</Text>}
+          </View>
+        </View>
+        <View style={styles.teacherPager}>
+          <TouchableOpacity
+            style={[styles.teacherArrow, selectedIndex === 0 && styles.teacherArrowDisabled]}
+            onPress={() => onChangeIndex(Math.max(0, selectedIndex - 1))}
+            disabled={selectedIndex === 0}
+          >
+            <Ionicons name="chevron-back" size={16} color={selectedIndex === 0 ? colors.border : colors.navy} />
+          </TouchableOpacity>
+          <Text style={styles.teacherCountText}>{teacherCountLabel}</Text>
+          <TouchableOpacity
+            style={[styles.teacherArrow, selectedIndex === teachers.length - 1 && styles.teacherArrowDisabled]}
+            onPress={() => onChangeIndex(Math.min(teachers.length - 1, selectedIndex + 1))}
+            disabled={selectedIndex === teachers.length - 1}
+          >
+            <Ionicons name="chevron-forward" size={16} color={selectedIndex === teachers.length - 1 ? colors.border : colors.navy} />
+          </TouchableOpacity>
         </View>
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.teacherName}>{teacher.firstName} {teacher.lastName ?? ''}</Text>
-        <Text style={styles.teacherMeta}>
-          {[yearsExp, 'Verified'].filter(Boolean).join(' · ')}
-        </Text>
-        {teacher.bio ? (
-          <Text style={styles.teacherBio} numberOfLines={3}>{teacher.bio}</Text>
-        ) : null}
-      </View>
+      {teacher.bio ? (
+        <Text style={styles.teacherBio} numberOfLines={4}>{teacher.bio}</Text>
+      ) : (
+        <Text style={styles.teacherBio}>No description available yet.</Text>
+      )}
     </View>
   )
 }
@@ -389,10 +472,44 @@ const styles = StyleSheet.create({
 
   // Teacher card
   teacherCard: {
-    flexDirection: 'row', gap: spacing.md,
     borderWidth: 1, borderColor: colors.border,
     borderRadius: radius.card, padding: spacing.md,
+    gap: spacing.md,
     marginBottom: spacing.lg,
+  },
+  teacherHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  teacherProfileRow: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  teacherPager: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  teacherArrow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.lightGray,
+  },
+  teacherArrowDisabled: {
+    backgroundColor: colors.white,
+  },
+  teacherCountText: {
+    minWidth: 34,
+    textAlign: 'center',
+    fontSize: fontSize.caption,
+    fontFamily: 'Nunito-Bold',
+    color: colors.navy,
   },
   verifiedDot: {
     position: 'absolute', bottom: -2, right: -2,

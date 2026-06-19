@@ -25,7 +25,7 @@ function formatPhoneForInput(phone?: string | null) {
 
 export default function ParentSetupScreen() {
   const insets = useSafeAreaInsets()
-  const { user } = useAuth()
+  const { user, parentUserId } = useAuth()
   const existingFirstName = (user?.user_metadata?.firstName as string | undefined)?.trim() ?? ''
   const existingLastName = (user?.user_metadata?.lastName as string | undefined)?.trim() ?? ''
   const existingCity = (user?.user_metadata?.city as string | undefined)?.trim() ?? ''
@@ -81,8 +81,13 @@ export default function ParentSetupScreen() {
       }
 
       try {
+        if (!parentUserId) {
+          Alert.alert('Error', 'Parent profile could not be resolved. Please sign in again.')
+          return
+        }
+
         await parentApi.users.updateProfile({
-          userId: user.id,
+          userId: parentUserId,
           firstName: resolvedFirstName,
           lastName: resolvedLastName,
           city: city.trim(),

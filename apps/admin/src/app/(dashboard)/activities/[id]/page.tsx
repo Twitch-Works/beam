@@ -5,6 +5,83 @@ import { useRouter, useParams } from 'next/navigation'
 import { adminApi } from '@/lib/api'
 import { ActivityForm, FormState, EMPTY_FORM, apiToForm } from '../ActivityForm'
 
+const SLOT_DURATION_OPTIONS = [30, 45, 60, 90, 120, 180, 240]
+
+function normalizeSkillTerm(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function parseTimeToMinutes(value: string) {
+  const [hours, minutes] = value.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+function formatMinutesToTime(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function getTodayDateString() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getNextQuarterHourMinutes() {
+  const now = new Date()
+  const totalMinutes = now.getHours() * 60 + now.getMinutes()
+  return Math.ceil((totalMinutes + 1) / 15) * 15
+}
+
+function buildTimeOptions() {
+  const options: string[] = []
+  for (let minutes = 0; minutes < 24 * 60; minutes += 15) {
+    options.push(formatMinutesToTime(minutes))
+  }
+  return options
+}
+
+const ALL_START_TIME_OPTIONS = buildTimeOptions()
+
+function buildSkillIndex(values: string[]) {
+  const phrases = new Set<string>()
+  const tokens = new Set<string>()
+
+  for (const value of values) {
+    const normalized = normalizeSkillTerm(value)
+    if (!normalized) continue
+    phrases.add(normalized)
+    for (const token of normalized.split(' ')) {
+      if (token) tokens.add(token)
+    }
+  }
+
+  return { phrases, tokens }
+}
+
+function teacherMatchesActivitySpecialization(
+  teacherSpecializations: string[],
+  activityKeywords: string[],
+) {
+  const teacherIndex = buildSkillIndex(teacherSpecializations)
+  const activityIndex = buildSkillIndex(activityKeywords)
+
+  if (teacherIndex.phrases.size === 0) return false
+
+  for (const phrase of teacherIndex.phrases) {
+    if (activityIndex.phrases.has(phrase)) return true
+  }
+
+  for (const token of teacherIndex.tokens) {
+    if (activityIndex.tokens.has(token)) return true
+  }
+
+  return false
+}
+
 export default function ActivityDetailPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -15,9 +92,10 @@ export default function ActivityDetailPage() {
   const [saved,   setSaved]   = useState(false)
   const [loading, setLoading] = useState(true)
   const [meta,    setMeta]    = useState<{ totalBookings?: number; avgRating?: number }>({})
+  const [activityCategoryName, setActivityCategoryName] = useState('')
 
   const [slots,       setSlots]       = useState<any[]>([])
-  const [teachers,    setTeachers]    = useState<{ id: string; name: string }[]>([])
+  const [teachers,    setTeachers]    = useState<{ id: string; name: string; specializations: string[] }[]>([])
   const [showSlotForm, setShowSlotForm] = useState(false)
   const [slotForm,    setSlotForm]    = useState({ teacherId: '', date: '', startTime: '09:00', endTime: '10:00' })
   const [addingSlot,  setAddingSlot]  = useState(false)
@@ -36,16 +114,51 @@ export default function ActivityDetailPage() {
         if (activityRes) {
           setForm(apiToForm(activityRes))
           setMeta({ totalBookings: activityRes.totalBookings, avgRating: activityRes.avgRating })
+          setActivityCategoryName(activityRes.categoryName ?? '')
         }
         setSlots(slotsRes.items ?? [])
         setTeachers((teachersRes.items ?? []).map((t: any) => ({
           id:   t.id,
           name: `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim() || t.email,
+          specializations: Array.isArray(t.specializations) ? t.specializations : [],
         })))
       } catch {}
       setLoading(false)
     })()
   }, [id])
+
+  const activityDurationMins = Number(form.sessionDuration?.replace(/\D/g, '') || 60)
+  const todayDateString = getTodayDateString()
+  const minimumStartMinutes = slotForm.date === todayDateString ? getNextQuarterHourMinutes() : 0
+  const startTimeOptions = ALL_START_TIME_OPTIONS.filter((time) =>
+    parseTimeToMinutes(time) >= minimumStartMinutes,
+  )
+  const activityKeywords = [
+    form.title,
+    ...(form.tags ? form.tags.split(',').map(tag => tag.trim()) : []),
+  ].filter(Boolean)
+
+  const allowedSlotDurations = SLOT_DURATION_OPTIONS.filter(duration =>
+    duration >= activityDurationMins && duration <= activityDurationMins * 2,
+  )
+
+  const endTimeOptions = allowedSlotDurations
+    .map((duration) => {
+      const endMinutes = parseTimeToMinutes(slotForm.startTime) + duration
+      if (endMinutes >= 24 * 60) return null
+      return {
+        value: formatMinutesToTime(endMinutes),
+        label: `${formatMinutesToTime(endMinutes)} (${duration} min)`,
+      }
+    })
+    .filter((option): option is { value: string; label: string } => option !== null)
+
+  const eligibleTeachers = teachers.filter(teacher =>
+    teacherMatchesActivitySpecialization(
+      teacher.specializations,
+      [...activityKeywords, activityCategoryName],
+    ),
+  )
 
   async function handleSave(status: FormState['status']) {
     setSaving(true)
@@ -87,6 +200,48 @@ export default function ActivityDetailPage() {
       setSlotError('Teacher and date are required.')
       return
     }
+
+    const startMinutes = parseTimeToMinutes(slotForm.startTime)
+    const endMinutes = parseTimeToMinutes(slotForm.endTime)
+    const durationMinutes = endMinutes - startMinutes
+
+    if (endMinutes <= startMinutes) {
+      setSlotError('End time must be after start time.')
+      return
+    }
+
+    if (slotForm.date === todayDateString && startMinutes < minimumStartMinutes) {
+      setSlotError('Start time must be after the current time.')
+      return
+    }
+
+    if (durationMinutes < activityDurationMins) {
+      setSlotError(`Slot duration must be at least ${activityDurationMins} minutes.`)
+      return
+    }
+
+    if (durationMinutes > activityDurationMins * 2) {
+      setSlotError(`Slot duration cannot be more than ${activityDurationMins * 2} minutes.`)
+      return
+    }
+
+    if (!allowedSlotDurations.includes(durationMinutes)) {
+      setSlotError(`Slot duration must be one of: ${allowedSlotDurations.join(', ')} minutes.`)
+      return
+    }
+
+    const duplicateSlot = slots.some((slot) =>
+      slot.teacherId === slotForm.teacherId &&
+      slot.date === slotForm.date &&
+      slot.startTime === slotForm.startTime &&
+      slot.endTime === slotForm.endTime,
+    )
+
+    if (duplicateSlot) {
+      setSlotError('This teacher already has the same slot for this activity.')
+      return
+    }
+
     setAddingSlot(true)
     setSlotError(null)
     try {
@@ -95,12 +250,26 @@ export default function ActivityDetailPage() {
       setSlots(fresh.items ?? [])
       setSlotForm({ teacherId: '', date: '', startTime: '09:00', endTime: '10:00' })
       setShowSlotForm(false)
-    } catch {
-      setSlotError('Failed to add slot. Make sure the API is running.')
+    } catch (error: any) {
+      setSlotError(error?.message ?? 'Failed to add slot. Make sure the API is running.')
     } finally {
       setAddingSlot(false)
     }
   }
+
+  useEffect(() => {
+    if (startTimeOptions.length === 0) return
+    if (!startTimeOptions.includes(slotForm.startTime)) {
+      setSlotForm((current) => ({ ...current, startTime: startTimeOptions[0] }))
+    }
+  }, [slotForm.date, slotForm.startTime, startTimeOptions])
+
+  useEffect(() => {
+    if (endTimeOptions.length === 0) return
+    if (!endTimeOptions.some((option) => option.value === slotForm.endTime)) {
+      setSlotForm((current) => ({ ...current, endTime: endTimeOptions[0].value }))
+    }
+  }, [slotForm.startTime, slotForm.endTime, endTimeOptions])
 
   return (
     <div>
@@ -178,8 +347,13 @@ export default function ActivityDetailPage() {
                   required
                 >
                   <option value="">Select teacher</option>
-                  {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  {eligibleTeachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
+                {eligibleTeachers.length === 0 && (
+                  <p style={{ marginTop: 6, fontSize: 12, color: 'var(--color-gray-text)' }}>
+                    No teachers with matching specializations were found for this activity.
+                  </p>
+                )}
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Date <span style={{ color: 'var(--color-coral)' }}>*</span></label>
@@ -195,14 +369,33 @@ export default function ActivityDetailPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Start</label>
-                  <input type="time" className="form-input" value={slotForm.startTime} onChange={e => setSlotForm(f => ({ ...f, startTime: e.target.value }))} />
+                  <select
+                    className="form-input"
+                    value={slotForm.startTime}
+                    onChange={e => setSlotForm(f => ({ ...f, startTime: e.target.value }))}
+                  >
+                    {startTimeOptions.map((time) => (
+                      <option key={time} value={time}>{time}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">End</label>
-                  <input type="time" className="form-input" value={slotForm.endTime} onChange={e => setSlotForm(f => ({ ...f, endTime: e.target.value }))} />
+                  <select
+                    className="form-input"
+                    value={slotForm.endTime}
+                    onChange={e => setSlotForm(f => ({ ...f, endTime: e.target.value }))}
+                  >
+                    {endTimeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
+            <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--color-gray-text)' }}>
+              Slot duration must be between {activityDurationMins} and {activityDurationMins * 2} minutes, using Beam slot increments.
+            </p>
             <button type="submit" className="btn btn--primary btn--sm" disabled={addingSlot}>
               {addingSlot ? 'Adding…' : 'Add Slot'}
             </button>

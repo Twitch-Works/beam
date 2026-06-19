@@ -37,10 +37,13 @@ export const parentApi = {
       )
     },
     get: (id: string) => apiFetch<ActivityDetail>(`/activities/${id}`),
-    slots: (activityId: string, from: string, days = 7) =>
-      apiFetch<{ slots: Record<string, Slot[]>; from: string; to: string }>(
-        `/activities/${activityId}/slots?from=${from}&days=${days}`,
-      ),
+    slots: (activityId: string, from: string, days = 7, teacherId?: string | null) => {
+      const q = new URLSearchParams({ from, days: String(days) })
+      if (teacherId) q.set('teacherId', teacherId)
+      return apiFetch<{ slots: Record<string, Slot[]>; from: string; to: string }>(
+        `/activities/${activityId}/slots?${q.toString()}`,
+      )
+    },
   },
   bookings: {
     list: (parentId: string, params?: { status?: string }) => {
@@ -51,14 +54,29 @@ export const parentApi = {
     create: (body: {
       parentId: string; childId: string; activityId: string; slotId: string
       totalAmount: number; discountCode?: string; discountAmount?: number
-    }) => apiFetch<{ booking: Booking; payment: { id: string } }>('/bookings', {
+    }) => apiFetch<{ booking: Booking; payment: PaymentSummary }>('/bookings', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
     get: (bookingId: string, parentId: string) =>
       apiFetch<Booking>(`/bookings/${bookingId}?parentId=${parentId}`),
+    reschedule: (bookingId: string, parentId: string, newSlotId: string) =>
+      apiFetch<{ ok: boolean; booking: Booking }>(`/bookings/${bookingId}/reschedule`, {
+        method: 'PATCH',
+        body: JSON.stringify({ parentId, newSlotId }),
+      }),
     cancel: (bookingId: string, parentId: string) =>
       apiFetch<{ ok: boolean; booking: Booking }>(`/bookings/${bookingId}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ parentId }),
+      }),
+    verifyOtp: (bookingId: string, parentId: string, otp: string) =>
+      apiFetch<{ ok: boolean; booking: Booking }>(`/bookings/${bookingId}/verify-otp`, {
+        method: 'POST',
+        body: JSON.stringify({ parentId, otp }),
+      }),
+    complete: (bookingId: string, parentId: string) =>
+      apiFetch<{ ok: boolean; booking: Booking }>(`/bookings/${bookingId}/complete`, {
         method: 'POST',
         body: JSON.stringify({ parentId }),
       }),
@@ -103,6 +121,13 @@ export const parentApi = {
   },
 
   users: {
+    me: (params: { authUserId?: string; email?: string; phone?: string }) => {
+      const q = new URLSearchParams()
+      if (params.authUserId) q.set('authUserId', params.authUserId)
+      if (params.email) q.set('email', params.email)
+      if (params.phone) q.set('phone', params.phone)
+      return apiFetch<ParentUser>(`/users/me?${q.toString()}`)
+    },
     registerParent: (body: { userId?: string; email: string; firstName: string; lastName: string; phone?: string }) =>
       apiFetch<{ id: string }>('/users/register-parent', {
         method: 'POST',
@@ -122,11 +147,13 @@ export type ActivityDetail = Activity & {
   preparationNotes: string | null
   reviewCount: number
   teacherId: string | null
+  teachers: ActivityTeacher[]
   category: { id: string; name: string; color: string } | null
 }
 
 export type Slot = {
   id: string
+  teacherId?: string | null
   date: string
   startTime: string
   endTime: string
@@ -140,6 +167,16 @@ export type Child = {
   firstName: string
   lastName: string | null
   dateOfBirth: string
+}
+
+export type ParentUser = {
+  id: string
+  email: string
+  firstName: string
+  lastName: string
+  phone: string | null
+  city: string | null
+  role: 'parent' | 'teacher' | 'admin' | 'super_admin'
 }
 
 export type Activity = {
@@ -162,11 +199,22 @@ export type Activity = {
 
 export type Booking = {
   id: string
-  status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'rescheduled'
+  status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'rescheduled'
   sessionType: string
   totalAmount: string
   scheduledAt: string | null
   createdAt: string
+  confirmedAt?: string | null
+  teacherOtp?: string | null
+  teacherOtpVerifiedAt?: string | null
+  completedAt?: string | null
+  parentCompletedAt?: string | null
+  payoutQueuedAt?: string | null
+  payoutReleasedAt?: string | null
+  canReschedule?: boolean
+  canComplete?: boolean
+  otpVisible?: boolean
+  paymentStatus?: 'pending' | 'success' | 'failed' | 'refunded' | null
   activityId: string | null
   activityTitle: string | null
   activityImage: string | null
@@ -176,6 +224,12 @@ export type Booking = {
   teacherLastName: string | null
   childFirstName: string | null
   childLastName: string | null
+}
+
+export type PaymentSummary = {
+  id: string
+  status: 'pending' | 'success' | 'failed' | 'refunded'
+  gatewayPaymentId?: string | null
 }
 
 export type Teacher = {
@@ -195,6 +249,17 @@ export type Teacher = {
     ageGroup: string
     imageUrl: string | null
   }[]
+}
+
+export type ActivityTeacher = {
+  id: string
+  firstName: string
+  lastName: string | null
+  bio: string | null
+  city: string | null
+  verificationStatus: 'pending' | 'verified' | 'rejected'
+  specializations: string[]
+  totalSessions: number
 }
 
 export type ChildProgress = {

@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
+import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
 
 export async function findPaymentByBookingId(bookingId: string) {
   return db.query.payments.findFirst({ where: eq(schema.payments.bookingId, bookingId) }) ?? null
@@ -32,4 +33,25 @@ export async function releaseSlot(bookingId: string) {
   await db.update(schema.slots)
     .set({ isAvailable: true, lockedByBookingId: null, updatedAt: new Date() })
     .where(eq(schema.slots.lockedByBookingId, bookingId))
+}
+
+export async function syncSlotsForBooking(bookingId: string) {
+  const booking = await db.query.bookings.findFirst({
+    where: eq(schema.bookings.id, bookingId),
+  })
+
+  if (!booking?.slotId) return
+
+  const slot = await db.query.slots.findFirst({
+    where: eq(schema.slots.id, booking.slotId),
+  })
+
+  if (!slot) return
+
+  await syncConflictingTeacherSlots(db, {
+    teacherId: slot.teacherId,
+    date: slot.date,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+  })
 }

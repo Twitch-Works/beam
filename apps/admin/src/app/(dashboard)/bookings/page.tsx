@@ -13,7 +13,7 @@ import { BOOKING_STATUS_BADGE } from '@/lib/status-badges'
 
 // TODO: replace with useAllBookings() hook from @beam/hooks/admin when @beam/hooks/admin is wired
 
-type BookingStatus = 'confirmed' | 'completed' | 'cancelled' | 'pending' | 'rescheduled'
+type BookingStatus = 'confirmed' | 'completed' | 'cancelled' | 'pending' | 'rescheduled' | 'in_progress'
 
 interface Booking {
   id: string
@@ -28,6 +28,7 @@ interface Booking {
   status: BookingStatus
   amount: number
   createdAt: string
+  paymentStatus?: string | null
 }
 
 const MOCK_BOOKINGS: Booking[] = [
@@ -82,13 +83,14 @@ export default function BookingsPage() {
           parentName: `${b.parentFirstName ?? ''} ${b.parentLastName ?? ''}`.trim(),
           childName: b.childFirstName ?? '—',
           activity: b.activityTitle ?? '—',
-          teacher: null,
+          teacher: b.teacher || null,
           city: b.parentCity ?? '—',
           date: b.scheduledAt ? new Date(b.scheduledAt).toISOString().split('T')[0] : '—',
           time: b.scheduledAt ? new Date(b.scheduledAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
           status: b.status as BookingStatus,
           amount: Number(b.totalAmount),
           createdAt: new Date(b.createdAt).toISOString().split('T')[0],
+          paymentStatus: b.paymentStatus ?? null,
         })))
         setApiUnavailable(false)
       } catch {
@@ -117,7 +119,7 @@ export default function BookingsPage() {
   const kpis = {
     total:     activeBookings.length,
     pending:   activeBookings.filter(b => b.status === 'pending').length,
-    confirmed: activeBookings.filter(b => b.status === 'confirmed').length,
+    confirmed: activeBookings.filter(b => b.status === 'confirmed' || b.status === 'in_progress').length,
     revenue:   activeBookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.amount, 0),
   }
 
@@ -178,7 +180,7 @@ export default function BookingsPage() {
         <div className="kpi-grid kpi-grid--4">
           {[
             { label: 'Total Bookings', value: kpis.total, delta: '+8 this week', up: true, Icon: CalendarDays, iconBg: 'var(--color-mint)', iconColor: 'var(--color-primary)' },
-            { label: 'Pending Assignment', value: kpis.pending, delta: 'Needs teacher', up: false, Icon: AlertCircle, iconBg: '#FEF3C7', iconColor: '#B45309' },
+            { label: 'Pending Assignment', value: kpis.pending, delta: 'Needs teacher confirmation', up: false, Icon: AlertCircle, iconBg: '#FEF3C7', iconColor: '#B45309' },
             { label: 'Confirmed', value: kpis.confirmed, delta: 'Upcoming sessions', up: true, Icon: CheckCircle2, iconBg: '#DCFCE7', iconColor: '#16A34A' },
             { label: 'Revenue (Completed)', value: `₹${kpis.revenue.toLocaleString('en-IN')}`, delta: '+12% vs last month', up: true, Icon: IndianRupee, iconBg: '#EDE9FE', iconColor: '#7C3AED' },
           ].map(k => (
@@ -212,6 +214,7 @@ export default function BookingsPage() {
             <option value="all">All Statuses</option>
             <option value="pending">Pending</option>
             <option value="confirmed">Confirmed</option>
+            <option value="in_progress">In Progress</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
             <option value="rescheduled">Rescheduled</option>
@@ -257,7 +260,8 @@ export default function BookingsPage() {
                   </td>
                   <td style={{ fontSize: 13 }}>{b.activity}</td>
                   <td>
-                    {b.teacher
+                    {
+                    b.teacher
                       ? <span style={{ fontSize: 13 }}>{b.teacher}</span>
                       : <span style={{ color: 'var(--color-coral)', fontSize: 13, fontWeight: 600 }}>Unassigned</span>
                     }
@@ -271,7 +275,7 @@ export default function BookingsPage() {
                   <td><span className={BOOKING_STATUS_BADGE[b.status].cls}>{BOOKING_STATUS_BADGE[b.status].label}</span></td>
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn--ghost btn--sm" onClick={() => router.push(`/bookings/${b.id}`)}>View</button>
+                      <button className="btn btn--ghost btn--sm" onClick={() => router.push(`/bookings/${b.rawId || b.id}`)}>View</button>
                       {b.teacher === null && b.status === 'pending' && b.rawId && (
                         <button
                           className="btn btn--sm"
@@ -288,7 +292,7 @@ export default function BookingsPage() {
                           }}
                         >Assign</button>
                       )}
-                      {(b.status === 'pending' || b.status === 'confirmed') && b.rawId && (
+                      {(b.status === 'pending' || b.status === 'confirmed' || b.status === 'in_progress') && b.rawId && (
                         <button
                           className="btn btn--sm"
                           style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}

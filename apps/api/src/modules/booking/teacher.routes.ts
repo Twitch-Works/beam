@@ -2,6 +2,10 @@ import type { FastifyInstance } from 'fastify'
 import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
 import { eq, and, or, desc, sum, count } from 'drizzle-orm'
+import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
+
+const DEVELOPMENT_OTP = '000000'
+const APP_MODE = process.env.APP_MODE ?? process.env.NODE_ENV ?? 'development'
 
 export async function teacherRoutes(fastify: FastifyInstance) {
 
@@ -26,6 +30,10 @@ export async function teacherRoutes(fastify: FastifyInstance) {
         sessionType:      schema.bookings.sessionType,
         totalAmount:      schema.bookings.totalAmount,
         scheduledAt:      schema.bookings.scheduledAt,
+        confirmedAt:      schema.bookings.confirmedAt,
+        teacherOtp:       schema.bookings.teacherOtp,
+        teacherOtpVerifiedAt: schema.bookings.teacherOtpVerifiedAt,
+        completedAt:      schema.bookings.completedAt,
         notes:            schema.bookings.notes,
         activityId:       schema.bookings.activityId,
         activityTitle:    schema.activities.title,
@@ -50,16 +58,16 @@ export async function teacherRoutes(fastify: FastifyInstance) {
   })
 
   // ── PATCH /bookings/:id/status ─────────────────────────────────────────────
-  // Teacher updates booking status: confirmed | completed | cancelled
+  // Teacher updates booking status: confirmed | cancelled
   fastify.patch<{
     Params: { id: string }
-    Body: { status: 'confirmed' | 'completed' | 'cancelled'; teacherId: string }
+    Body: { status: 'confirmed' | 'cancelled'; teacherId: string }
   }>('/bookings/:id/status', async (req, reply) => {
     const { id } = req.params
     const { status, teacherId } = req.body
     if (!status || !teacherId) return reply.status(400).send({ error: 'status and teacherId are required' })
 
-    const allowed = ['confirmed', 'completed', 'cancelled'] as const
+    const allowed = ['confirmed', 'cancelled'] as const
     if (!allowed.includes(status)) return reply.status(400).send({ error: 'Invalid status' })
 
     const booking = await db.query.bookings.findFirst({
@@ -67,11 +75,45 @@ export async function teacherRoutes(fastify: FastifyInstance) {
     })
     if (!booking) return reply.status(404).send({ error: 'Booking not found' })
 
+    const now = new Date()
+    const nextOtp = status === 'confirmed'
+      ? (APP_MODE === 'development' ? DEVELOPMENT_OTP : String(Math.floor(100000 + Math.random() * 900000)))
+      : null
     const [updated] = await db
       .update(schema.bookings)
-      .set({ status, updatedAt: new Date() })
+      .set({
+        status,
+        confirmedAt: status === 'confirmed' ? now : booking.confirmedAt,
+        teacherOtp: status === 'confirmed' ? nextOtp : null,
+        teacherOtpGeneratedAt: status === 'confirmed' ? now : null,
+        teacherOtpVerifiedAt: status === 'cancelled' ? null : booking.teacherOtpVerifiedAt,
+        updatedAt: now,
+      })
       .where(eq(schema.bookings.id, id))
       .returning()
+
+    if (status === 'confirmed') {
+      await db.insert(schema.notifications).values({
+        userId: booking.parentId,
+        type: 'booking.confirmed',
+        title: 'Teacher confirmed your class',
+        body: 'Your teacher has confirmed the booking. OTP will be available at class time.',
+        data: { bookingId: id },
+      })
+      console.log('[beam-whatsapp][teacher-otp]', { bookingId: id, teacherId, otp: nextOtp })
+    }
+
+    if (status === 'cancelled' && booking.slotId) {
+      const slot = await db.query.slots.findFirst({ where: eq(schema.slots.id, booking.slotId) })
+      if (slot) {
+        await syncConflictingTeacherSlots(db, {
+          teacherId: slot.teacherId,
+          date: slot.date,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+        })
+      }
+    }
 
     return reply.send(updated)
   })

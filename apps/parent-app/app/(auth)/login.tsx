@@ -29,7 +29,7 @@ type EmailMode = 'login' | 'register'
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets()
-  const [authMethod, setAuthMethod] = useState<AuthMethod>('phone')
+  const [authMethod, setAuthMethod] = useState<AuthMethod>('email')
   const [emailMode, setEmailMode] = useState<EmailMode>('login')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
@@ -234,8 +234,8 @@ export default function LoginScreen() {
                   : 'Create your parent account with email and password'}
           </Text>
         </View>
-
-        <View style={styles.toggleRow}>
+{/* THIS IS TO BLOCK PHONE LOGIN... un comment this later */}
+        {/* <View style={styles.toggleRow}>
           <TouchableOpacity
             style={[styles.toggleChip, authMethod === 'phone' && styles.toggleChipActive]}
             onPress={() => setAuthMethod('phone')}
@@ -252,7 +252,7 @@ export default function LoginScreen() {
               Email Login
             </Text>
           </TouchableOpacity>
-        </View>
+        </View> */}
 
         {authMethod === 'email' ? (
           <View style={styles.emailModeRow}>

@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/AuthContext'
 
 // ─────────────────────────────────────────────
 // Data
@@ -65,6 +66,7 @@ const TOTAL_STEPS = 3
 
 export default function ChildSetupScreen() {
   const insets = useSafeAreaInsets()
+  const { parentUserId } = useAuth()
 
   const [step, setStep] = useState<Step>('info')
 
@@ -99,8 +101,10 @@ export default function ChildSetupScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     setLoading(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!parentUserId) {
+        Alert.alert('Error', 'Parent profile is still loading. Please try again.')
+        return
+      }
 
       const midAge = ageGroup?.mid ?? 5
       const dob = new Date()
@@ -111,7 +115,7 @@ export default function ChildSetupScreen() {
       console.log("Date of Birth:", dob.toISOString().split('T')[0]);
 
       const { error } = await supabase.from('children').insert({
-        parent_id:     user.id,
+        parent_id:     parentUserId,
         first_name:    childName.trim(),
         date_of_birth: dob.toISOString().split('T')[0],
         interests:     interests,
