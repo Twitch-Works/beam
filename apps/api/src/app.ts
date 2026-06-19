@@ -34,7 +34,7 @@ export function buildApp() {
   fastify.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
 
   fastify.get('/debug/db-host', async () => {
-    const url = process.env.POSTGRES_URL || process.env.DATABASE_URL ?? ''
+    const url = process.env.POSTGRES_URL || process.env.DATABASE_URL || ''
     try {
       const parsed = new URL(url)
       return { host: parsed.hostname, port: parsed.port, user: parsed.username, db: parsed.pathname }
