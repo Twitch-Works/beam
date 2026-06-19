@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
-import { eq, and, desc, ilike } from 'drizzle-orm'
+import { eq, and, desc } from 'drizzle-orm'
 import beamSchemas from '@beam/schemas'
 
 // Skill axis mapping: activity tags/category keywords → skill keys
