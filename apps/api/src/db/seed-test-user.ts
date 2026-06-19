@@ -13,9 +13,9 @@ import * as schema from './schema.js'
 
 const MOCK_USER_ID = '00000000-0000-0000-0000-999999999999'
 
-console.log('🔍 Checking database connection... ', process.env.DATABASE_URL)
+console.log('🔍 Checking database connection... ', process.env.DATABASE_URL, process.env.POSTGRES_URL)
 
-const client = postgres(process.env.DATABASE_URL!, { max: 1 })
+const client = postgres(process.env.POSTGRES_URL || process.env.DATABASE_URL!, { max: 1 })
 const db = drizzle(client, { schema })
 
 function daysAgo(n: number) {

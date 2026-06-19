@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import { eq } from 'drizzle-orm'
 import * as schema from './schema.js'
 
-const client = postgres(process.env.DATABASE_URL!, { max: 1 })
+const client = postgres(process.env.POSTGRES_URL || process.env.DATABASE_URL!, { max: 1 })
 const db = drizzle(client, { schema })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -438,8 +438,8 @@ async function seed() {
       gatewayPaymentId: `pay_${Math.random().toString(36).slice(2, 14)}`,
       status: b.status === 'cancelled' ? 'refunded' as const
         : b.status === 'pending' ? 'pending' as const
-        : i % 15 === 0 ? 'failed' as const
-        : 'success' as const,
+          : i % 15 === 0 ? 'failed' as const
+            : 'success' as const,
       refundedAt: b.status === 'cancelled' ? daysAgo(1) : null,
       createdAt: b.createdAt,
     }))

@@ -1,11 +1,11 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
-import { adminRoutes }    from './modules/admin/admin.routes.js'
-import { catalogRoutes }  from './modules/catalog/catalog.routes.js'
-import { bookingRoutes }  from './modules/booking/booking.routes.js'
-import { teacherRoutes }  from './modules/booking/teacher.routes.js'
-import { parentRoutes }   from './modules/booking/parent.routes.js'
+import { adminRoutes } from './modules/admin/admin.routes.js'
+import { catalogRoutes } from './modules/catalog/catalog.routes.js'
+import { bookingRoutes } from './modules/booking/booking.routes.js'
+import { teacherRoutes } from './modules/booking/teacher.routes.js'
+import { parentRoutes } from './modules/booking/parent.routes.js'
 import { paymentsRoutes } from './modules/payments/payments.routes.js'
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'beam-dev-secret-change-in-production'
@@ -34,7 +34,7 @@ export function buildApp() {
   fastify.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
 
   fastify.get('/debug/db-host', async () => {
-    const url = process.env.DATABASE_URL ?? ''
+    const url = process.env.POSTGRES_URL || process.env.DATABASE_URL ?? ''
     try {
       const parsed = new URL(url)
       return { host: parsed.hostname, port: parsed.port, user: parsed.username, db: parsed.pathname }
