@@ -4,12 +4,13 @@ import {
   KeyboardAvoidingView, Platform, ScrollView, Alert,
 } from 'react-native'
 import { Image } from 'expo-image'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import { supabase } from '@/lib/supabase'
+import { parentApi } from '@/lib/api'
 import { useAuth } from '@/lib/AuthContext'
 
 // ─────────────────────────────────────────────
@@ -66,6 +67,7 @@ const TOTAL_STEPS = 3
 
 export default function ChildSetupScreen() {
   const insets = useSafeAreaInsets()
+  const { redirectTo } = useLocalSearchParams<{ redirectTo?: string }>()
   const { parentUserId } = useAuth()
 
   const [step, setStep] = useState<Step>('info')
@@ -114,31 +116,14 @@ export default function ChildSetupScreen() {
       console.log("Child Age:", midAge);
       console.log("Date of Birth:", dob.toISOString().split('T')[0]);
 
-      const { error } = await supabase.from('children').insert({
-        parent_id:     parentUserId,
-        first_name:    childName.trim(),
-        date_of_birth: dob.toISOString().split('T')[0],
-        interests:     interests,
-        notes:         notes.trim() || null,
+      await parentApi.children.create({
+        parentId: parentUserId,
+        firstName: childName.trim(),
+        dateOfBirth: dob.toISOString().split('T')[0],
+        gender: gender ?? undefined,
+        interests,
+        notes: notes.trim() || undefined,
       })
-
-      console.log("ERRROR ", error);
-
-      if (error && error.code !== '42501') {
-        Alert.alert(
-          'Error',
-          'Could not save profile. You can try again from the Kids tab.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                void completeOnboarding()
-              },
-            },
-          ],
-        )
-        return
-      }
 
       await completeOnboarding()
     } finally {
@@ -191,15 +176,27 @@ export default function ChildSetupScreen() {
         <View style={styles.successButtons}>
           <TouchableOpacity
             style={styles.outlineBtn}
-            onPress={() => router.replace('/(root)/explore')}
+            onPress={() => {
+              if (typeof redirectTo === 'string' && redirectTo.length > 0) {
+                router.replace(redirectTo as any)
+                return
+              }
+              router.replace('/(root)/explore')
+            }}
           >
             <Text style={styles.outlineBtnText}>Browse Activities</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.primaryBtn}
-            onPress={() => router.replace('/(root)/kids')}
+            onPress={() => {
+              if (typeof redirectTo === 'string' && redirectTo.length > 0) {
+                router.replace(redirectTo as any)
+                return
+              }
+              router.replace('/(root)/profile')
+            }}
           >
-            <Text style={styles.primaryBtnText}>View Dashboard</Text>
+            <Text style={styles.primaryBtnText}>View Profile</Text>
           </TouchableOpacity>
         </View>
       </View>

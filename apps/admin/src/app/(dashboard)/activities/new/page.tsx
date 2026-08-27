@@ -21,6 +21,10 @@ export default function NewActivityPage() {
         status,
         sessionType: form.sessionType,
         sessionDurationMins: parseInt(form.sessionDuration) || 60,
+        deliveryMode: form.deliveryMode,
+        venueType: form.venueType,
+        activityFormat: form.activityFormat,
+        trialAvailable: form.trialAvailable === 'true',
       })
       setSaved(true)
       setTimeout(() => router.push(`/activities/${result.id}`), 800)

@@ -151,6 +151,21 @@
 
 ---
 
+## Pending Items — Edge Cases & Recovery Flows
+
+| Item | Status | Notes |
+|---|---|---|
+| Sold out | ⬜ | Join waitlist, show next available date, recommend similar nearby activities |
+| Age mismatch | ⬜ | Explain the requirement clearly and recommend age-fit alternatives |
+| Booking abandoned | ⬜ | Save selection and send a respectful reminder with a deep link back into the flow |
+| App install abandoned | ⬜ | Preserve the web session and send an app link after OTP |
+| Provider cancels | ⬜ | Send immediate notification and offer refund, credit, or one-tap rebooking |
+| Parent has 2 children | ⬜ | Support multi-child selection, sibling pricing, and separate child profiles |
+| Poor first experience | ⬜ | Route to support before rebooking prompts or promotional offers |
+| Payment failed | ⬜ | Hold the slot, allow retry or method change, and preserve booking context |
+
+---
+
 ## Immediate Next Actions
 
 1. ❌ **Run `pnpm db:migrate` on Render** (Render Shell or locally with prod DATABASE_URL)

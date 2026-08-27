@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
-import { eq, and, or, desc, ne } from 'drizzle-orm'
+import { eq, and, or, desc, ne, inArray } from 'drizzle-orm'
 import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
 
 const MAX_BOOKING_HOURS = 24 * 15
@@ -43,6 +43,53 @@ function canRevealOtp(scheduledAt: Date | string | null) {
 
 function generateOtp() {
   return String(Math.floor(100000 + Math.random() * 900000))
+}
+
+function buildCaseReference() {
+  return `CASE-${randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`
+}
+
+function getIssueSlaTarget(now: Date) {
+  const target = new Date(now)
+  target.setHours(18, 0, 0, 0)
+  if (target.getTime() <= now.getTime()) {
+    target.setDate(target.getDate() + 1)
+  }
+  return target
+}
+
+function getDesiredOutcomeFromResolution(resolution?: 'none' | 'refund' | 'credit' | 'support_only') {
+  if (resolution === 'refund') return 'refund'
+  if (resolution === 'credit') return 'credit'
+  return 'support'
+}
+
+function getDefaultNextAction(issueType: 'no_show' | 'venue_issue' | 'safety_issue' | 'schedule_issue' | 'other') {
+  switch (issueType) {
+    case 'no_show':
+      return 'We are checking with the facilitator and venue team now.'
+    case 'safety_issue':
+      return 'A Beam lead will review this safety concern as a priority.'
+    case 'schedule_issue':
+      return 'We are reviewing the timing or cancellation issue and next best option.'
+    case 'venue_issue':
+      return 'We are reviewing the venue details and support steps for this session.'
+    default:
+      return 'Beam support will review this case and update you in the app.'
+  }
+}
+
+function getResolutionOfferLabel(resolution: 'none' | 'refund' | 'credit' | 'support_only' | null | undefined) {
+  switch (resolution) {
+    case 'refund':
+      return 'Refund approved'
+    case 'credit':
+      return 'Beam credit offered'
+    case 'support_only':
+      return 'Support follow-up'
+    default:
+      return null
+  }
 }
 
 async function createNotification(params: {
@@ -113,6 +160,24 @@ async function findParentConflictingBooking(params: {
   })
 }
 
+async function getLatestSessionIssuesMap(bookingIds: string[]) {
+  if (bookingIds.length === 0) return new Map<string, typeof schema.sessionIssues.$inferSelect>()
+
+  const rows = await db
+    .select()
+    .from(schema.sessionIssues)
+    .where(inArray(schema.sessionIssues.bookingId, bookingIds))
+    .orderBy(desc(schema.sessionIssues.reportedAt), desc(schema.sessionIssues.createdAt))
+
+  const map = new Map<string, typeof schema.sessionIssues.$inferSelect>()
+  for (const row of rows) {
+    if (!map.has(row.bookingId)) {
+      map.set(row.bookingId, row)
+    }
+  }
+  return map
+}
+
 export async function bookingRoutes(fastify: FastifyInstance) {
   fastify.get<{
     Querystring: { parentId: string; status?: string }
@@ -131,6 +196,9 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         id: schema.bookings.id,
         status: schema.bookings.status,
         sessionType: schema.bookings.sessionType,
+        deliveryMode: schema.activities.deliveryMode,
+        locality: schema.activities.locality,
+        city: schema.activities.city,
         totalAmount: schema.bookings.totalAmount,
         scheduledAt: schema.bookings.scheduledAt,
         createdAt: schema.bookings.createdAt,
@@ -146,15 +214,44 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         teacherFirstName: schema.users.firstName,
         teacherLastName: schema.users.lastName,
         childFirstName: schema.children.firstName,
+        feedbackId: schema.reviews.id,
+        feedbackRating: schema.reviews.rating,
+        feedbackComment: schema.reviews.comment,
       })
       .from(schema.bookings)
       .leftJoin(schema.activities, eq(schema.bookings.activityId, schema.activities.id))
       .leftJoin(schema.users, eq(schema.bookings.teacherId, schema.users.id))
       .leftJoin(schema.children, eq(schema.bookings.childId, schema.children.id))
+      .leftJoin(schema.reviews, eq(schema.bookings.id, schema.reviews.bookingId))
       .where(and(...conditions))
       .orderBy(desc(schema.bookings.scheduledAt))
 
-    return reply.send({ items: rows })
+    const latestIssues = await getLatestSessionIssuesMap(rows.map((row) => row.id))
+
+    return reply.send({
+      items: rows.map((row) => {
+        const latestIssue = latestIssues.get(row.id)
+        return {
+          ...row,
+          issueReported: !!latestIssue,
+          issueId: latestIssue?.id ?? null,
+          issueCaseReference: latestIssue?.caseReference ?? null,
+          issueStatus: latestIssue?.status ?? null,
+          issueResolution: latestIssue?.resolution ?? null,
+          issueResolutionLabel: getResolutionOfferLabel(latestIssue?.resolution),
+          issueType: latestIssue?.issueType ?? null,
+          issueDesiredOutcome: latestIssue?.desiredOutcome ?? null,
+          issueNextAction: latestIssue?.nextAction ?? null,
+          issueSlaTargetAt: latestIssue?.slaTargetAt ?? null,
+          issueAttachmentUrls: latestIssue?.attachmentUrls ?? [],
+          issueIntakeAnswers: latestIssue?.intakeAnswers ?? [],
+          issueResolvedAt: latestIssue?.resolvedAt ?? null,
+          feedbackSubmitted: !!row.feedbackId,
+          feedbackRating: row.feedbackRating ?? null,
+          feedbackComment: row.feedbackComment ?? null,
+        }
+      }),
+    })
   })
 
   fastify.get<{ Querystring: { parentId: string } }>('/children', async (req, reply) => {
@@ -167,12 +264,44 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         firstName: schema.children.firstName,
         lastName: schema.children.lastName,
         dateOfBirth: schema.children.dateOfBirth,
+        gender: schema.children.gender,
+        interests: schema.children.interests,
+        notes: schema.children.notes,
       })
       .from(schema.children)
       .where(eq(schema.children.parentId, parentId))
       .orderBy(schema.children.createdAt)
 
     return reply.send({ items: rows })
+  })
+
+  fastify.post<{
+    Body: {
+      parentId: string
+      firstName: string
+      lastName?: string
+      dateOfBirth: string
+      gender?: string
+      interests?: string[]
+      notes?: string
+    }
+  }>('/children', async (req, reply) => {
+    const { parentId, firstName, lastName, dateOfBirth, gender, interests, notes } = req.body
+    if (!parentId || !firstName || !dateOfBirth) {
+      return reply.status(400).send({ error: 'parentId, firstName, and dateOfBirth are required' })
+    }
+
+    const [child] = await db.insert(schema.children).values({
+      parentId,
+      firstName: firstName.trim(),
+      lastName: lastName?.trim() || null,
+      dateOfBirth,
+      gender: gender?.trim() || null,
+      interests: interests ?? [],
+      notes: notes?.trim() || null,
+    }).returning()
+
+    return reply.status(201).send(child)
   })
 
   fastify.post<{
@@ -260,6 +389,9 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         id: schema.bookings.id,
         status: schema.bookings.status,
         sessionType: schema.bookings.sessionType,
+        deliveryMode: schema.activities.deliveryMode,
+        locality: schema.activities.locality,
+        city: schema.activities.city,
         totalAmount: schema.bookings.totalAmount,
         scheduledAt: schema.bookings.scheduledAt,
         createdAt: schema.bookings.createdAt,
@@ -280,24 +412,50 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         childFirstName: schema.children.firstName,
         childLastName: schema.children.lastName,
         paymentStatus: schema.payments.status,
+        feedbackId: schema.reviews.id,
+        feedbackRating: schema.reviews.rating,
+        feedbackComment: schema.reviews.comment,
       })
       .from(schema.bookings)
       .leftJoin(schema.activities, eq(schema.bookings.activityId, schema.activities.id))
       .leftJoin(schema.users, eq(schema.bookings.teacherId, schema.users.id))
       .leftJoin(schema.children, eq(schema.bookings.childId, schema.children.id))
       .leftJoin(schema.payments, eq(schema.bookings.id, schema.payments.bookingId))
+      .leftJoin(schema.reviews, eq(schema.bookings.id, schema.reviews.bookingId))
       .where(and(eq(schema.bookings.id, id), eq(schema.bookings.parentId, parentId)))
       .limit(1)
 
     if (!rows[0]) return reply.status(404).send({ error: 'Booking not found' })
 
     const booking = rows[0]
+    const latestIssue = await db.query.sessionIssues.findFirst({
+      where: eq(schema.sessionIssues.bookingId, booking.id),
+      orderBy: [desc(schema.sessionIssues.reportedAt), desc(schema.sessionIssues.createdAt)],
+    })
     return reply.send({
       ...booking,
       teacherOtp: !!booking.teacherOtpVerifiedAt ? booking.teacherOtp : null,
       canReschedule: canReschedule(booking.scheduledAt) && ['pending', 'confirmed'].includes(booking.status),
       canComplete: booking.status === 'in_progress' && !!booking.teacherOtpVerifiedAt,
       otpVisible: canRevealOtp(booking.scheduledAt),
+      issueReported: !!latestIssue,
+      issueId: latestIssue?.id ?? null,
+      issueCaseReference: latestIssue?.caseReference ?? null,
+      issueStatus: latestIssue?.status ?? null,
+      issueResolution: latestIssue?.resolution ?? null,
+      issueResolutionLabel: getResolutionOfferLabel(latestIssue?.resolution),
+      issueType: latestIssue?.issueType ?? null,
+      issueDescription: latestIssue?.description ?? null,
+      issueReportedAt: latestIssue?.reportedAt ?? null,
+      issueDesiredOutcome: latestIssue?.desiredOutcome ?? null,
+      issueNextAction: latestIssue?.nextAction ?? null,
+      issueSlaTargetAt: latestIssue?.slaTargetAt ?? null,
+      issueAttachmentUrls: latestIssue?.attachmentUrls ?? [],
+      issueIntakeAnswers: latestIssue?.intakeAnswers ?? [],
+      issueResolvedAt: latestIssue?.resolvedAt ?? null,
+      feedbackSubmitted: !!booking.feedbackId,
+      feedbackRating: booking.feedbackRating ?? null,
+      feedbackComment: booking.feedbackComment ?? null,
     })
   })
 
@@ -506,6 +664,103 @@ export async function bookingRoutes(fastify: FastifyInstance) {
 
   fastify.post<{
     Params: { id: string }
+    Body: {
+      parentId: string
+      issueType: 'no_show' | 'venue_issue' | 'safety_issue' | 'schedule_issue' | 'other'
+      description?: string
+      desiredOutcome?: 'refund' | 'credit' | 'rebooking' | 'support'
+      requestedResolution?: 'none' | 'refund' | 'credit' | 'support_only'
+      attachmentUrls?: string[]
+      intakeAnswers?: Array<{ questionId: string; label: string; answer: string }>
+    }
+  }>('/bookings/:id/issues', async (req, reply) => {
+    const { id } = req.params
+    const { parentId, issueType, description, desiredOutcome, requestedResolution, attachmentUrls, intakeAnswers } = req.body
+
+    if (!parentId || !issueType) {
+      return reply.status(400).send({ error: 'parentId and issueType are required' })
+    }
+
+    const booking = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, id) })
+    if (!booking) return reply.status(404).send({ error: 'Booking not found' })
+    if (booking.parentId !== parentId) return reply.status(403).send({ error: 'Forbidden' })
+    if (!['confirmed', 'in_progress', 'completed', 'cancelled', 'rescheduled'].includes(booking.status)) {
+      return reply.status(422).send({ error: 'Issue reporting is not available for this booking state' })
+    }
+
+    const now = new Date()
+    const nextSlaTarget = getIssueSlaTarget(now)
+    const nextDesiredOutcome = desiredOutcome ?? getDesiredOutcomeFromResolution(requestedResolution)
+    const nextDescription = description?.trim() || null
+    const nextAttachments = (attachmentUrls ?? []).slice(0, 5)
+    const nextIntakeAnswers = (intakeAnswers ?? []).filter((answer) => answer.answer?.trim())
+    const nextAction = getDefaultNextAction(issueType)
+    const existing = await db.query.sessionIssues.findFirst({
+      where: eq(schema.sessionIssues.bookingId, booking.id),
+      orderBy: [desc(schema.sessionIssues.reportedAt), desc(schema.sessionIssues.createdAt)],
+    })
+
+    let issue: typeof schema.sessionIssues.$inferSelect
+
+    if (existing && existing.status !== 'resolved') {
+      const [updated] = await db.update(schema.sessionIssues)
+        .set({
+          issueType,
+          description: nextDescription ?? existing.description,
+          desiredOutcome: nextDesiredOutcome,
+          resolution: requestedResolution ?? existing.resolution,
+          nextAction,
+          slaTargetAt: existing.slaTargetAt ?? nextSlaTarget,
+          attachmentUrls: nextAttachments.length > 0 ? nextAttachments : existing.attachmentUrls,
+          intakeAnswers: nextIntakeAnswers.length > 0 ? nextIntakeAnswers : existing.intakeAnswers,
+          status: existing.status === 'reported' ? 'reported' : existing.status,
+          updatedAt: now,
+        })
+        .where(eq(schema.sessionIssues.id, existing.id))
+        .returning()
+      issue = updated
+    } else {
+      const [created] = await db.insert(schema.sessionIssues).values({
+        bookingId: booking.id,
+        parentId,
+        teacherId: booking.teacherId ?? null,
+        caseReference: buildCaseReference(),
+        issueType,
+        description: nextDescription,
+        status: 'reported',
+        resolution: requestedResolution ?? 'none',
+        desiredOutcome: nextDesiredOutcome,
+        nextAction,
+        slaTargetAt: nextSlaTarget,
+        attachmentUrls: nextAttachments,
+        intakeAnswers: nextIntakeAnswers,
+        reportedAt: now,
+        updatedAt: now,
+      }).returning()
+      issue = created
+    }
+
+    await createNotification({
+      userId: parentId,
+      type: 'booking.issue_reported',
+      title: 'Issue reported',
+      body: `We recorded your ${issueType.replaceAll('_', ' ')} case ${issue.caseReference}. Expected update by ${nextSlaTarget.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}.`,
+      data: {
+        bookingId: booking.id,
+        issueId: issue.id,
+        caseReference: issue.caseReference,
+        issueType: issue.issueType,
+        resolution: issue.resolution,
+        desiredOutcome: issue.desiredOutcome,
+        slaTargetAt: issue.slaTargetAt,
+      },
+    })
+
+    return reply.status(201).send({ ok: true, issue })
+  })
+
+  fastify.post<{
+    Params: { id: string }
     Body: { parentId: string; rating: number; comment?: string }
   }>('/bookings/:id/feedback', async (req, reply) => {
     const { id } = req.params
@@ -536,10 +791,10 @@ export async function bookingRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{
     Params: { id: string }
-    Body: { parentId: string; firstName?: string; lastName?: string; dateOfBirth?: string }
+    Body: { parentId: string; firstName?: string; lastName?: string; dateOfBirth?: string; gender?: string; interests?: string[]; notes?: string }
   }>('/children/:id', async (req, reply) => {
     const { id } = req.params
-    const { parentId, firstName, lastName, dateOfBirth } = req.body
+    const { parentId, firstName, lastName, dateOfBirth, gender, interests, notes } = req.body
     if (!parentId) return reply.status(400).send({ error: 'parentId is required' })
 
     const child = await db.query.children.findFirst({ where: eq(schema.children.id, id) })
@@ -550,6 +805,9 @@ export async function bookingRoutes(fastify: FastifyInstance) {
     if (firstName !== undefined) updates.firstName = firstName
     if (lastName !== undefined) updates.lastName = lastName
     if (dateOfBirth !== undefined) updates.dateOfBirth = dateOfBirth
+    if (gender !== undefined) updates.gender = gender
+    if (interests !== undefined) updates.interests = interests
+    if (notes !== undefined) updates.notes = notes
 
     const [updated] = await db.update(schema.children)
       .set(updates)
@@ -597,6 +855,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       city: user.city,
       verificationStatus: teacher.verificationStatus,
       specializations: teacher.specializations,
+      languages: teacher.languages,
       totalSessions: sessions.length,
       activities,
     })

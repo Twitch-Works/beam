@@ -39,6 +39,11 @@ interface Activity {
   totalBookings: number
   avgRating: number
   teacherCount: number
+  deliveryMode?: 'at_home' | 'online'
+  venueType?: 'indoor' | 'outdoor' | 'online' | 'at_home'
+  activityFormat?: 'trial' | 'one_time' | 'recurring'
+  trialAvailable?: boolean
+  city?: string
   createdAt: string
   updatedAt: string
   imageUrl: string
@@ -62,7 +67,6 @@ const MOCK_ACTIVITIES: Activity[] = [
   { id: 'ACT015', title: 'English Communication Skills', category: 'Language', ageGroup: '7–14', pricePerSession: 500, status: 'published', totalBookings: 189, avgRating: 4.6, teacherCount: 5, createdAt: '2023-11-20', updatedAt: '2024-05-01', imageUrl: 'https://picsum.photos/seed/school1/400/200' },
 ]
 
-const STATIC_CATEGORIES = ['All Categories', ...Array.from(new Set(MOCK_ACTIVITIES.map(a => a.category))).sort()]
 const PAGE_SIZE = 10
 
 function Stars({ rating }: { rating: number }) {
@@ -103,6 +107,11 @@ export default function ActivitiesPage() {
           totalBookings: Number(a.totalBookings ?? a.total_bookings ?? 0),
           avgRating: Number(a.avgRating ?? a.avg_rating ?? 0),
           teacherCount: Number(a.teacherCount ?? a.teacher_count ?? 0),
+          deliveryMode: a.deliveryMode ?? 'at_home',
+          venueType: a.venueType ?? 'at_home',
+          activityFormat: a.activityFormat ?? 'one_time',
+          trialAvailable: Boolean(a.trialAvailable),
+          city: a.city ?? '',
           createdAt: a.createdAt ?? a.created_at ?? '',
           updatedAt: a.updatedAt ?? a.updated_at ?? '',
           imageUrl: a.imageUrl ?? a.image_url ?? '',
@@ -116,6 +125,7 @@ export default function ActivitiesPage() {
   }, [USE_MOCK_DATA, status, search, page])
 
   const activeActivities = USE_MOCK_DATA ? MOCK_ACTIVITIES : (liveActivities ?? MOCK_ACTIVITIES)
+  const categoryOptions = ['All Categories', ...Array.from(new Set(activeActivities.map((activity) => activity.category).filter(Boolean))).sort()]
 
   const filtered = useMemo(() => {
     if (liveActivities) return activeActivities
@@ -204,7 +214,7 @@ export default function ActivitiesPage() {
             <option value="archived">Archived</option>
           </select>
           <select className="filter-bar__select" value={category} onChange={e => { setCategory(e.target.value); setPage(1) }}>
-            {STATIC_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            {categoryOptions.map(c => <option key={c}>{c}</option>)}
           </select>
           <div className="filter-bar__spacer" />
           <span className="filter-bar__count">{filtered.length} activities</span>
@@ -237,6 +247,7 @@ export default function ActivitiesPage() {
                   <th>Activity</th>
                   <th>Category</th>
                   <th>Age Group</th>
+                  <th>Format</th>
                   <th>Price / Session</th>
                   <th>Bookings</th>
                   <th>Avg Rating</th>
@@ -246,7 +257,7 @@ export default function ActivitiesPage() {
                 </tr>
               </thead>
               <tbody>
-                {loading && <SkeletonTableRows count={8} cols={10} />}
+                {loading && <SkeletonTableRows count={8} cols={11} />}
                 {!loading && paged.map(a => {
                   const cat = CATEGORY_COLORS[a.category] ?? { bg: '#E2E8F0', color: '#64748B' }
                   return (
@@ -262,6 +273,13 @@ export default function ActivitiesPage() {
                       </td>
                       <td><span className="tag">{a.category}</span></td>
                       <td style={{ fontSize: 13 }}>{a.ageGroup} yrs</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          <span className="tag tag--gray">{a.activityFormat === 'one_time' ? 'One-time' : a.activityFormat === 'recurring' ? 'Recurring' : 'Trial'}</span>
+                          {a.trialAvailable && <span className="tag">Trial</span>}
+                          <span className="tag tag--gray">{a.venueType === 'at_home' ? 'At home' : a.venueType}</span>
+                        </div>
+                      </td>
                       <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--color-primary)' }}>₹{a.pricePerSession}</td>
                       <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{a.totalBookings}</td>
                       <td><Stars rating={a.avgRating} /></td>
@@ -286,7 +304,7 @@ export default function ActivitiesPage() {
                   )
                 })}
                 {!loading && paged.length === 0 && (
-                  <tr><td colSpan={10} className="empty-state">No activities match your filters.</td></tr>
+                  <tr><td colSpan={11} className="empty-state">No activities match your filters.</td></tr>
                 )}
               </tbody>
             </table>
@@ -319,6 +337,11 @@ export default function ActivitiesPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                           <span className="tag">{a.category}</span>
                           <span style={{ fontSize: 12, color: 'var(--color-gray)' }}>{a.ageGroup} yrs</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                          <span className="tag tag--gray">{a.activityFormat === 'one_time' ? 'One-time' : a.activityFormat === 'recurring' ? 'Recurring' : 'Trial'}</span>
+                          {a.trialAvailable && <span className="tag">Trial available</span>}
+                          <span className="tag tag--gray">{a.venueType === 'at_home' ? 'At home' : a.venueType}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                           <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-primary)', fontSize: 15 }}>₹{a.pricePerSession}</span>

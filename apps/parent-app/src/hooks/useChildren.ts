@@ -4,7 +4,6 @@ import { parentApi } from '@/lib/api'
 
 export function useChildren() {
   const { parentUserId } = useAuth()
-  console.log("Parent User ID:", parentUserId)
   return useQuery({
     queryKey: ['children', parentUserId],
     queryFn: () => parentApi.children.list(parentUserId!),

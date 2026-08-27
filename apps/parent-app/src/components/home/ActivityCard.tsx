@@ -1,9 +1,11 @@
 import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
+import * as Haptics from 'expo-haptics'
 import { Image } from 'expo-image'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import type { Activity as ApiActivity } from '@/lib/api'
+import { useSavedActivities } from '@/lib/SavedActivitiesContext'
 
 interface ActivityCardProps {
   activity: ApiActivity
@@ -13,6 +15,10 @@ interface ActivityCardProps {
 export const ActivityCard = React.memo(function ActivityCard({ activity, onPress }: ActivityCardProps) {
   const price = parseFloat(activity.pricePerSession).toFixed(0)
   const rating = activity.avgRating ? parseFloat(activity.avgRating).toFixed(1) : null
+  const { isWishlisted, toggleWishlist } = useSavedActivities()
+  const liked = isWishlisted(activity.id)
+  const deliveryLabel = activity.deliveryMode === 'online' ? 'Online' : 'At Home'
+  const deliveryIcon = activity.deliveryMode === 'online' ? 'videocam-outline' : 'home-outline'
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.92}>
@@ -27,12 +33,28 @@ export const ActivityCard = React.memo(function ActivityCard({ activity, onPress
           contentFit="cover"
         />
         <View style={styles.atHomeBadge}>
-          <Ionicons name="home-outline" size={11} color={colors.navy} />
-          <Text style={styles.atHomeText}>At Home</Text>
+          <Ionicons name={deliveryIcon as any} size={11} color={colors.navy} />
+          <Text style={styles.atHomeText}>{deliveryLabel}</Text>
         </View>
-        <View style={styles.heartBtn}>
-          <Ionicons name="heart-outline" size={14} color={colors.gray} />
-        </View>
+        <TouchableOpacity
+          style={styles.heartBtn}
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+            await toggleWishlist({
+              id: activity.id,
+              title: activity.title,
+              imageUrl: activity.imageUrl,
+              pricePerSession: activity.pricePerSession,
+              ageGroup: activity.ageGroup,
+              categoryName: activity.categoryName,
+              sessionDurationMins: activity.sessionDurationMins,
+              avgRating: activity.avgRating,
+            })
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name={liked ? 'heart' : 'heart-outline'} size={14} color={liked ? colors.coral : colors.gray} />
+        </TouchableOpacity>
       </View>
       <View style={styles.cardBody}>
         <Text style={styles.cardMeta} numberOfLines={1}>

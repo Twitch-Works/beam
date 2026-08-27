@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DeliveryModeSchema } from './activity.schema'
 
 export const BookingStatusSchema = z.enum(['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rescheduled'])
 export type BookingStatus = z.infer<typeof BookingStatusSchema>
@@ -13,6 +14,9 @@ export const BookingSchema = z.object({
   slotId: z.string().uuid(),
   status: BookingStatusSchema,
   sessionType: z.enum(['1:1', 'group']),
+  deliveryMode: DeliveryModeSchema.optional(),
+  locality: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
   totalAmount: z.number().positive(),
   discountAmount: z.number().min(0).default(0),
   notes: z.string().max(500).nullable().optional(),
@@ -73,3 +77,62 @@ export const VerifyBookingOtpInputSchema = z.object({
   otp: z.string().length(6),
 })
 export type VerifyBookingOtpInput = z.infer<typeof VerifyBookingOtpInputSchema>
+
+export const SessionIssueTypeSchema = z.enum([
+  'no_show',
+  'venue_issue',
+  'safety_issue',
+  'schedule_issue',
+  'other',
+])
+export type SessionIssueType = z.infer<typeof SessionIssueTypeSchema>
+
+export const SessionIssueStatusSchema = z.enum(['reported', 'reviewing', 'resolved'])
+export type SessionIssueStatus = z.infer<typeof SessionIssueStatusSchema>
+
+export const SessionIssueResolutionSchema = z.enum(['none', 'refund', 'credit', 'support_only'])
+export type SessionIssueResolution = z.infer<typeof SessionIssueResolutionSchema>
+
+export const SessionIssueDesiredOutcomeSchema = z.enum(['refund', 'credit', 'rebooking', 'support'])
+export type SessionIssueDesiredOutcome = z.infer<typeof SessionIssueDesiredOutcomeSchema>
+
+export const SessionIssueIntakeAnswerSchema = z.object({
+  questionId: z.string().min(1),
+  label: z.string().min(1),
+  answer: z.string().min(1).max(500),
+})
+export type SessionIssueIntakeAnswer = z.infer<typeof SessionIssueIntakeAnswerSchema>
+
+export const SessionIssueSchema = z.object({
+  id: z.string().uuid(),
+  bookingId: z.string().uuid(),
+  parentId: z.string().uuid(),
+  teacherId: z.string().uuid().nullable().optional(),
+  caseReference: z.string().min(1),
+  issueType: SessionIssueTypeSchema,
+  description: z.string().max(1000).nullable().optional(),
+  status: SessionIssueStatusSchema,
+  resolution: SessionIssueResolutionSchema.default('none'),
+  desiredOutcome: SessionIssueDesiredOutcomeSchema.default('support'),
+  nextAction: z.string().max(280).nullable().optional(),
+  slaTargetAt: z.date().nullable().optional(),
+  attachmentUrls: z.array(z.string()).default([]),
+  intakeAnswers: z.array(SessionIssueIntakeAnswerSchema).default([]),
+  reportedAt: z.date(),
+  resolvedAt: z.date().nullable().optional(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+})
+export type SessionIssue = z.infer<typeof SessionIssueSchema>
+
+export const ReportSessionIssueInputSchema = z.object({
+  bookingId: z.string().uuid(),
+  parentId: z.string().uuid(),
+  issueType: SessionIssueTypeSchema,
+  description: z.string().max(1000).optional(),
+  desiredOutcome: SessionIssueDesiredOutcomeSchema.optional(),
+  requestedResolution: SessionIssueResolutionSchema.optional(),
+  attachmentUrls: z.array(z.string()).max(5).optional(),
+  intakeAnswers: z.array(SessionIssueIntakeAnswerSchema).max(8).optional(),
+})
+export type ReportSessionIssueInput = z.infer<typeof ReportSessionIssueInputSchema>

@@ -99,6 +99,11 @@ export const adminApi = {
         kpis: { open: number; underReview: number; highPriority: number; refundAtRisk: number }
       }>(`/admin/disputes${q.toString() ? `?${q}` : ''}`)
     },
+    updateIssue: (id: string, body: { status?: string; resolution?: string; description?: string }) =>
+      apiFetch<{ ok: boolean; issue: ApiRecord; payment?: ApiRecord | null }>(`/admin/session-issues/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
   },
 
   notifications: {
@@ -155,9 +160,10 @@ export const adminApi = {
   },
 
   payments: {
-    list: (params?: { status?: string; page?: number }) => {
+    list: (params?: { status?: string; search?: string; page?: number }) => {
       const q = new URLSearchParams()
       if (params?.status) q.set('status', params.status)
+      if (params?.search) q.set('search', params.search)
       if (params?.page) q.set('page', String(params.page))
       return apiFetch<{ payments: ApiRecord[]; payouts: ApiRecord[]; totals: ApiRecord }>(
         `/admin/payments${q.toString() ? `?${q}` : ''}`
@@ -165,16 +171,27 @@ export const adminApi = {
     },
     refund: (bookingId: string) =>
       apiFetch<{ ok: boolean; payment: ApiRecord }>(`/admin/payments/${bookingId}/refund`, { method: 'POST', body: JSON.stringify({}) }),
+    retry: (bookingId: string) =>
+      apiFetch<{ ok: boolean; payment: ApiRecord }>(`/admin/payments/${bookingId}/retry`, { method: 'POST', body: JSON.stringify({}) }),
+    updatePayout: (id: string, body: { action: 'dispatch' | 'settle' | 'retry' }) =>
+      apiFetch<{ ok: boolean; payout: ApiRecord }>(`/admin/payouts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   },
 
   reviews: {
-    list: (params?: { flagged?: boolean }) => {
+    list: (params?: { flagged?: boolean; search?: string; minRating?: number; maxRating?: number }) => {
       const q = new URLSearchParams()
       if (params?.flagged) q.set('flagged', 'true')
+      if (params?.search) q.set('search', params.search)
+      if (params?.minRating !== undefined) q.set('minRating', String(params.minRating))
+      if (params?.maxRating !== undefined) q.set('maxRating', String(params.maxRating))
       return apiFetch<{ items: any[]; total: number; avgRating: string; flagged: number }>(
         `/admin/reviews${q.toString() ? `?${q}` : ''}`
       )
     },
+    flag: (id: string, body: { flagged: boolean }) =>
+      apiFetch<{ ok: boolean; review: ApiRecord }>(`/admin/reviews/${id}/flag`, { method: 'PATCH', body: JSON.stringify(body) }),
+    escalate: (id: string, body?: { issueType?: string; resolution?: string; description?: string }) =>
+      apiFetch<{ ok: boolean; review: ApiRecord; issue: ApiRecord }>(`/admin/reviews/${id}/escalate`, { method: 'POST', body: JSON.stringify(body ?? {}) }),
   },
 
   coupons: {

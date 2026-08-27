@@ -1,18 +1,19 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Flag, AlertTriangle, Star, MessageSquare } from 'lucide-react'
+import { adminApi } from '@/lib/api'
+import { useMockMode } from '@/lib/mock-mode'
 import { StatCard } from '@/components/ui/StatCard'
 import { PageHeader } from '@/components/ui/PageHeader'
-
-// TODO: replace with useReviews() hook from @beam/hooks/admin
-// import { useReviews } from '@beam/hooks/admin'
+import { ApiFallbackBanner } from '@/components/ui/ApiFallbackBanner'
+import { SkeletonStatCard, SkeletonTableRows } from '@/components/Skeleton'
 
 interface Review {
   id: string
   bookingId: string
   parentName: string
-  childName: string
   teacherName: string
   activity: string
   rating: number
@@ -22,21 +23,39 @@ interface Review {
 }
 
 const MOCK_REVIEWS: Review[] = [
-  { id: 'RV001', bookingId: 'BK003', parentName: 'Anita Patel', childName: 'Karan Patel', teacherName: 'Ananya Reddy', activity: 'Bharatanatyam', rating: 5, comment: 'Absolutely wonderful session! Ananya is so patient and engaging. Karan loved every minute.', flagged: false, date: '2024-05-07' },
-  { id: 'RV002', bookingId: 'BK006', parentName: 'Nisha Agarwal', childName: 'Zara Agarwal', teacherName: 'Preethi Subramaniam', activity: 'Carnatic Vocal', rating: 5, comment: 'Preethi has a wonderful teaching style. Zara is already humming the swaras!', flagged: false, date: '2024-05-06' },
-  { id: 'RV003', bookingId: 'BK011', parentName: 'Pooja Iyer', childName: 'Ishaan Iyer', teacherName: 'Ananya Reddy', activity: 'Bharatanatyam', rating: 4, comment: 'Great session overall. A bit rushed at the end, but Ishaan learned a lot.', flagged: false, date: '2024-05-05' },
-  { id: 'RV004', bookingId: 'BK016', parentName: 'Meena Gupta', childName: 'Ravi Gupta', teacherName: 'Gaurav Tiwari', activity: 'Chess Basics', rating: 5, comment: 'Gaurav explains chess concepts so clearly even for a 7-year-old. Highly recommend!', flagged: false, date: '2024-05-04' },
-  { id: 'RV005', bookingId: 'BK017', parentName: 'Nisha Agarwal', childName: 'Kia Agarwal', teacherName: 'Arjun Kapoor', activity: 'Yoga for Kids', rating: 5, comment: 'Perfect energy for young children. Kia is asking for more sessions!', flagged: false, date: '2024-05-07' },
-  { id: 'RV006', bookingId: 'BK007', parentName: 'Deepa Krishnan', childName: 'Dev Krishnan', teacherName: 'Gaurav Tiwari', activity: 'Chess Basics', rating: 2, comment: 'Teacher was 20 minutes late and seemed distracted. Very disappointing.', flagged: true, date: '2024-05-06' },
-  { id: 'RV007', bookingId: 'BK009', parentName: 'Lakshmi Rao', childName: 'Aditi Rao', teacherName: 'Sneha Patel', activity: 'Watercolor Painting', rating: 3, comment: 'Decent class but expected more structured learning. Materials not prepared well.', flagged: false, date: '2024-05-04' },
-  { id: 'RV008', bookingId: 'BK031', parentName: 'Meena Gupta', childName: 'Sia Gupta', teacherName: 'Arjun Kapoor', activity: 'Yoga for Kids', rating: 1, comment: 'Teacher was rude and impatient. My child cried after the session. Completely unacceptable.', flagged: true, date: '2024-05-06' },
-  { id: 'RV009', bookingId: 'BK040', parentName: 'Pooja Iyer', childName: 'Ishaan Iyer', teacherName: 'Meera Joshi', activity: 'Cooking Adventures', rating: 4, comment: 'Fun and safe session. Meera is creative with recipes for kids. Will book again.', flagged: false, date: '2024-05-05' },
-  { id: 'RV010', bookingId: 'BK010', parentName: 'Sanjay Joshi', childName: 'Veer Joshi', teacherName: 'Meera Joshi', activity: 'Cooking Adventures', rating: 5, comment: 'Best cooking class for kids. Veer made a proper dish from scratch!', flagged: false, date: '2024-05-07' },
-  { id: 'RV011', bookingId: 'BK015', parentName: 'Kavya Nair', childName: 'Arya Nair', teacherName: 'Divya Menon', activity: 'Kathakali Dance', rating: 5, comment: 'Divya is a legend. The authenticity and grace she brings is unmatched.', flagged: false, date: '2024-05-07' },
-  { id: 'RV012', bookingId: 'BK025', parentName: 'Sanjay Joshi', childName: 'Veer Joshi', teacherName: 'Ravi Shankar', activity: 'Guitar Lessons', rating: 2, comment: 'Session was cut short. Teacher had to leave early. No compensation offered.', flagged: true, date: '2024-05-02' },
-  { id: 'RV013', bookingId: 'BK042', parentName: 'Rajesh Kumar', childName: 'Kabir Kumar', teacherName: 'Sameer Malhotra', activity: 'English Communication', rating: 4, comment: 'Engaging teaching approach. Kabir is more confident speaking already.', flagged: false, date: '2024-05-05' },
-  { id: 'RV014', bookingId: 'BK013', parentName: 'Priya Sharma', childName: 'Mia Sharma', teacherName: 'Kiran Kumar', activity: 'Science Experiments', rating: 5, comment: 'Mind-blowing experiments! Mia went to sleep talking about photosynthesis. 10/10.', flagged: false, date: '2024-05-07' },
-  { id: 'RV015', bookingId: 'BK044', parentName: 'Suresh Reddy', childName: 'Nik Reddy', teacherName: 'Gaurav Tiwari', activity: 'Chess Basics', rating: 3, comment: 'Average session. Teacher was okay but not enthusiastic. Room for improvement.', flagged: false, date: '2024-05-03' },
+  {
+    id: 'RV-DEMO-1',
+    bookingId: 'BK-DEMO-101',
+    parentName: 'Asha Kapoor',
+    teacherName: 'Ritu Sharma',
+    activity: 'Junior Pottery Explorers',
+    rating: 5,
+    comment: 'Strong first session. The facilitator kept the group engaged and the child wanted to return.',
+    flagged: false,
+    date: '2026-08-20',
+  },
+  {
+    id: 'RV-DEMO-2',
+    bookingId: 'BK-DEMO-102',
+    parentName: 'Vikram Bansal',
+    teacherName: 'Neha Verma',
+    activity: 'Football Trial',
+    rating: 2,
+    comment: 'Coach arrived late and the trial felt rushed. Parent requested follow-up.',
+    flagged: true,
+    date: '2026-08-21',
+  },
+  {
+    id: 'RV-DEMO-3',
+    bookingId: 'BK-DEMO-103',
+    parentName: 'Meera Nair',
+    teacherName: 'Kunal Rao',
+    activity: 'Story Lab',
+    rating: 4,
+    comment: 'Good session quality. Parent is considering the recurring program.',
+    flagged: false,
+    date: '2026-08-22',
+  },
 ]
 
 const PAGE_SIZE = 10
@@ -44,87 +63,150 @@ const PAGE_SIZE = 10
 function StarRow({ rating }: { rating: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      {[1,2,3,4,5].map(s => (
-        <span key={s} style={{ fontSize: 14, color: s <= rating ? 'var(--color-yellow)' : '#E2E8F0' }}>★</span>
+      {[1, 2, 3, 4, 5].map((score) => (
+        <span key={score} style={{ fontSize: 14, color: score <= rating ? 'var(--color-yellow)' : '#E2E8F0' }}>★</span>
       ))}
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-gray)', marginLeft: 4 }}>{rating}.0</span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-gray)', marginLeft: 4 }}>{rating.toFixed(1)}</span>
     </div>
   )
 }
 
 export default function ReviewsPage() {
-  const [tab, setTab]         = useState<'all' | 'flagged' | 'low'>('all')
-  const [search, setSearch]   = useState('')
-  const [page, setPage]       = useState(1)
+  const { mockMode: USE_MOCK_DATA } = useMockMode()
+  const [tab, setTab] = useState<'all' | 'flagged' | 'low'>('all')
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(false)
+  const [apiUnavailable, setApiUnavailable] = useState(false)
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [metrics, setMetrics] = useState({ total: 0, avgRating: '0.0', flagged: 0 })
+  const [actionKey, setActionKey] = useState<string | null>(null)
 
-  // TODO: replace mock with -> const { data, isLoading } = useReviews({ tab, search, page })
+  async function loadReviews() {
+    if (USE_MOCK_DATA) {
+      setReviews(MOCK_REVIEWS)
+      setMetrics({
+        total: MOCK_REVIEWS.length,
+        avgRating: (MOCK_REVIEWS.reduce((sum, review) => sum + review.rating, 0) / MOCK_REVIEWS.length).toFixed(1),
+        flagged: MOCK_REVIEWS.filter((review) => review.flagged).length,
+      })
+      setLoading(false)
+      return
+    }
 
-  const base = useMemo(() => {
-    if (tab === 'flagged') return MOCK_REVIEWS.filter(r => r.flagged)
-    if (tab === 'low')     return MOCK_REVIEWS.filter(r => r.rating <= 2)
-    return MOCK_REVIEWS
-  }, [tab])
+    setLoading(true)
+    try {
+      const response = await adminApi.reviews.list({
+        flagged: tab === 'flagged' ? true : undefined,
+        maxRating: tab === 'low' ? 2 : undefined,
+        search: search || undefined,
+      })
 
-  const filtered = useMemo(() => {
-    if (!search) return base
-    return base.filter(r =>
-      r.parentName.toLowerCase().includes(search.toLowerCase()) ||
-      r.teacherName.toLowerCase().includes(search.toLowerCase()) ||
-      r.activity.toLowerCase().includes(search.toLowerCase())
-    )
-  }, [base, search])
+      setReviews(
+        response.items.map((item: any) => ({
+          id: item.id,
+          bookingId: item.bookingId ?? '',
+          parentName: [item.parentFirstName, item.parentLastName].filter(Boolean).join(' ').trim() || 'Unknown parent',
+          teacherName: [item.teacherFirstName, item.teacherLastName].filter(Boolean).join(' ').trim() || 'Teacher not assigned',
+          activity: item.activityTitle ?? 'Unknown activity',
+          rating: Number(item.rating ?? 0),
+          comment: item.comment ?? '',
+          flagged: Boolean(item.isFlagged),
+          date: (item.createdAt ?? '').split('T')[0],
+        }))
+      )
+      setMetrics({
+        total: Number(response.total ?? 0),
+        avgRating: response.avgRating ?? '0.0',
+        flagged: Number(response.flagged ?? 0),
+      })
+      setApiUnavailable(false)
+    } catch {
+      setApiUnavailable(true)
+      setReviews([])
+      setMetrics({ total: 0, avgRating: '0.0', flagged: 0 })
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  useEffect(() => {
+    void loadReviews()
+  }, [USE_MOCK_DATA, search, tab])
 
-  const avgRating = (MOCK_REVIEWS.reduce((s, r) => s + r.rating, 0) / MOCK_REVIEWS.length).toFixed(1)
+  async function runReviewAction(key: string, action: () => Promise<void>) {
+    if (USE_MOCK_DATA) return
+    setActionKey(key)
+    try {
+      await action()
+      await loadReviews()
+    } finally {
+      setActionKey(null)
+    }
+  }
+
+  const lowScoreCount = useMemo(() => reviews.filter((review) => review.rating <= 2).length, [reviews])
+  const totalPages = Math.ceil(reviews.length / PAGE_SIZE)
+  const paged = reviews.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div>
-      {/* Header */}
       <PageHeader title="Reviews & Feedback" subtitle="Parent ratings, quality flags, and low-score triage">
-        {/* TODO: POST /api/admin/reviews/export */}
         <button className="btn btn--secondary btn--sm">Export CSV</button>
       </PageHeader>
+      {apiUnavailable && <ApiFallbackBanner message="Live review data is unavailable. The quality queue cannot be trusted until the API is back." />}
 
-      {/* KPI Cards */}
-      <div className="kpi-grid kpi-grid--4">
-        {[
-          { label: 'Total Reviews', value: MOCK_REVIEWS.length, delta: '+6 this week', up: true, Icon: MessageSquare, iconBg: 'var(--color-mint)', iconColor: 'var(--color-primary)' },
-          { label: 'Average Rating', value: avgRating, delta: 'Platform-wide', up: true, Icon: Star, iconBg: '#FEF3C7', iconColor: '#FCB857' },
-          { label: 'Flagged Reviews', value: MOCK_REVIEWS.filter(r => r.flagged).length, delta: 'Need admin action', up: false, Icon: Flag, iconBg: '#FEE2E2', iconColor: '#DC2626' },
-          { label: 'Low Score (≤2★)', value: MOCK_REVIEWS.filter(r => r.rating <= 2).length, delta: 'Intervention queue', up: false, Icon: AlertTriangle, iconBg: '#FEE2E2', iconColor: '#DC2626' },
-        ].map(k => (
-          <StatCard key={k.label} {...k} />
-        ))}
-      </div>
+      {loading ? (
+        <div className="kpi-grid kpi-grid--4">
+          {Array.from({ length: 4 }).map((_, index) => <SkeletonStatCard key={index} />)}
+        </div>
+      ) : (
+        <div className="kpi-grid kpi-grid--4">
+          {[
+            { label: 'Total Reviews', value: metrics.total, delta: 'Across parent feedback', up: true, Icon: MessageSquare, iconBg: 'var(--color-mint)', iconColor: 'var(--color-primary)' },
+            { label: 'Average Rating', value: metrics.avgRating, delta: 'Platform-wide', up: true, Icon: Star, iconBg: '#FEF3C7', iconColor: '#FCB857' },
+            { label: 'Flagged Reviews', value: metrics.flagged, delta: 'Need admin action', up: false, Icon: Flag, iconBg: '#FEE2E2', iconColor: '#DC2626' },
+            { label: 'Low Score (≤2★)', value: lowScoreCount, delta: 'Intervention queue', up: false, Icon: AlertTriangle, iconBg: '#FEE2E2', iconColor: '#DC2626' },
+          ].map((card) => (
+            <StatCard key={card.label} {...card} />
+          ))}
+        </div>
+      )}
 
-      {/* Tabs + Table */}
       <div className="table-card">
-        {/* Tab Row */}
         <div style={{ display: 'flex', borderBottom: '1px solid #F1F5F9', padding: '0 24px' }}>
-          {(['all', 'flagged', 'low'] as const).map(t => (
+          {(['all', 'flagged', 'low'] as const).map((nextTab) => (
             <button
-              key={t}
-              onClick={() => { setTab(t); setPage(1) }}
+              key={nextTab}
+              onClick={() => { setTab(nextTab); setPage(1) }}
               style={{
-                background: 'none', border: 'none', padding: '14px 20px', cursor: 'pointer',
-                fontSize: 14, fontWeight: 600,
-                color: tab === t ? 'var(--color-primary)' : 'var(--color-gray)',
-                borderBottom: tab === t ? '2px solid var(--color-primary)' : '2px solid transparent',
-                marginBottom: -1
+                background: 'none',
+                border: 'none',
+                padding: '14px 20px',
+                cursor: 'pointer',
+                fontSize: 14,
+                fontWeight: 600,
+                color: tab === nextTab ? 'var(--color-primary)' : 'var(--color-gray)',
+                borderBottom: tab === nextTab ? '2px solid var(--color-primary)' : '2px solid transparent',
+                marginBottom: -1,
               }}
             >
-              {t === 'all' ? 'All Reviews' : t === 'flagged'
-                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Flag size={13} strokeWidth={2.5} />Flagged</span>
-                : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AlertTriangle size={13} strokeWidth={2.5} />Low Score</span>
-              }
-              <span style={{
-                marginLeft: 8, background: tab === t ? 'var(--color-mint)' : '#F1F5F9',
-                color: tab === t ? 'var(--color-primary)' : 'var(--color-gray)',
-                borderRadius: 99, padding: '2px 8px', fontSize: 12
-              }}>
-                {t === 'all' ? MOCK_REVIEWS.length : t === 'flagged' ? MOCK_REVIEWS.filter(r => r.flagged).length : MOCK_REVIEWS.filter(r => r.rating <= 2).length}
+              {nextTab === 'all'
+                ? 'All Reviews'
+                : nextTab === 'flagged'
+                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Flag size={13} strokeWidth={2.5} />Flagged</span>
+                  : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AlertTriangle size={13} strokeWidth={2.5} />Low Score</span>}
+              <span
+                style={{
+                  marginLeft: 8,
+                  background: tab === nextTab ? 'var(--color-mint)' : '#F1F5F9',
+                  color: tab === nextTab ? 'var(--color-primary)' : 'var(--color-gray)',
+                  borderRadius: 99,
+                  padding: '2px 8px',
+                  fontSize: 12,
+                }}
+              >
+                {nextTab === 'all' ? metrics.total : nextTab === 'flagged' ? metrics.flagged : lowScoreCount}
               </span>
             </button>
           ))}
@@ -133,96 +215,138 @@ export default function ReviewsPage() {
             <input
               placeholder="Search reviews…"
               value={search}
-              onChange={e => { setSearch(e.target.value); setPage(1) }}
+              onChange={(event) => { setSearch(event.target.value); setPage(1) }}
               style={{
-                border: '1px solid #E2E8F0', borderRadius: 8, padding: '6px 12px',
-                fontSize: 13, width: 220, outline: 'none', color: 'var(--color-navy)'
+                border: '1px solid #E2E8F0',
+                borderRadius: 8,
+                padding: '6px 12px',
+                fontSize: 13,
+                width: 220,
+                outline: 'none',
+                color: 'var(--color-navy)',
               }}
             />
           </div>
         </div>
 
-        {/* Review Rows */}
         <div>
-          {paged.map((r, i) => (
+          {loading && (
+            <div style={{ padding: '8px 24px' }}>
+              <table className="data-table">
+                <tbody>
+                  <SkeletonTableRows count={6} cols={2} />
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {!loading && paged.map((review, index) => (
             <div
-              key={r.id}
+              key={review.id}
               style={{
-                padding: '20px 24px', borderBottom: i < paged.length - 1 ? '1px solid #F8FAFC' : 'none',
-                background: r.rating <= 2 ? '#FFF5F5' : r.flagged ? '#FFFBEB' : '#fff',
-                display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'start'
+                padding: '20px 24px',
+                borderBottom: index < paged.length - 1 ? '1px solid #F8FAFC' : 'none',
+                background: review.rating <= 2 ? '#FFF5F5' : review.flagged ? '#FFFBEB' : '#fff',
+                display: 'grid',
+                gridTemplateColumns: '1fr auto',
+                gap: 16,
+                alignItems: 'start',
               }}
             >
               <div>
-                {/* Review header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: '50%', background: 'var(--color-mint)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 13, fontWeight: 700, color: 'var(--color-primary)', flexShrink: 0
-                  }}>
-                    {r.parentName.split(' ').map(n => n[0]).join('').slice(0,2)}
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: 'var(--color-mint)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: 'var(--color-primary)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {review.parentName.split(' ').map((name) => name[0]).join('').slice(0, 2)}
                   </div>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-navy)' }}>{r.parentName}</span>
-                      {r.flagged && (
+                      <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-navy)' }}>{review.parentName}</span>
+                      {review.flagged ? (
                         <span style={{ background: '#FEF3C7', color: '#92400E', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 99, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           <Flag size={11} strokeWidth={2.5} />Flagged
                         </span>
-                      )}
-                      {r.rating <= 2 && (
+                      ) : null}
+                      {review.rating <= 2 ? (
                         <span style={{ background: '#FEE2E2', color: '#991B1B', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 99, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           <AlertTriangle size={11} strokeWidth={2.5} />Low Score
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--color-gray)', marginTop: 2 }}>
-                      re: <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>{r.teacherName}</span> · {r.activity} · {r.childName}
+                      re: <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>{review.teacherName}</span> · {review.activity}
+                      {review.bookingId ? ` · ${review.bookingId}` : ''}
                     </div>
                   </div>
                   <div style={{ marginLeft: 'auto' }}>
-                    <StarRow rating={r.rating} />
+                    <StarRow rating={review.rating} />
                   </div>
                 </div>
-                {/* Comment */}
                 <p style={{ margin: 0, fontSize: 14, color: '#374151', lineHeight: 1.6, paddingLeft: 48 }}>
-                  "{r.comment}"
+                  "{review.comment || 'No written feedback provided.'}"
                 </p>
               </div>
-              {/* Actions */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', minWidth: 140 }}>
-                <span style={{ fontSize: 12, color: 'var(--color-gray)' }}>{r.date}</span>
+                <span style={{ fontSize: 12, color: 'var(--color-gray)' }}>{review.date || '—'}</span>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  {/* TODO: POST /api/admin/reviews/:id/flag */}
-                  {!r.flagged
-                    ? <button className="btn btn--ghost btn--sm" style={{ color: 'var(--color-gray)' }}>Flag</button>
-                    : <button className="btn btn--ghost btn--sm" style={{ color: 'var(--color-coral)' }}>Unflag</button>
-                  }
-                  {/* TODO: DELETE /api/admin/reviews/:id */}
-                  <button className="btn btn--ghost btn--sm" style={{ color: 'var(--color-coral)' }}>Remove</button>
+                  {review.bookingId ? <Link className="btn btn--ghost btn--sm" href={`/bookings/${review.bookingId}`}>Open Booking</Link> : null}
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    disabled={USE_MOCK_DATA || actionKey === `flag-${review.id}`}
+                    onClick={() => void runReviewAction(`flag-${review.id}`, async () => {
+                      await adminApi.reviews.flag(review.id, { flagged: !review.flagged })
+                    })}
+                  >
+                    {actionKey === `flag-${review.id}` ? 'Updating…' : review.flagged ? 'Unflag' : 'Flag'}
+                  </button>
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    style={{ color: 'var(--color-coral)' }}
+                    disabled={USE_MOCK_DATA || actionKey === `escalate-${review.id}`}
+                    onClick={() => void runReviewAction(`escalate-${review.id}`, async () => {
+                      await adminApi.reviews.escalate(review.id, {
+                        issueType: review.rating <= 2 ? 'other' : 'schedule_issue',
+                        resolution: review.rating <= 2 ? 'support_only' : 'none',
+                        description: review.comment,
+                      })
+                    })}
+                  >
+                    {actionKey === `escalate-${review.id}` ? 'Escalating…' : 'Escalate'}
+                  </button>
                 </div>
               </div>
             </div>
           ))}
 
-          {paged.length === 0 && (
+          {!loading && paged.length === 0 && (
             <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-gray)' }}>
-              No reviews in this category yet.
+              No reviews match this queue.
             </div>
           )}
         </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
+        {totalPages > 1 ? (
           <div className="pagination" style={{ borderTop: '1px solid #F1F5F9', padding: '12px 24px' }}>
-            <button className="page-btn" disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-              <button key={p} className={`page-btn${page === p ? ' page-btn--active' : ''}`} onClick={() => setPage(p)}>{p}</button>
+            <button className="page-btn" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>← Prev</button>
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map((nextPage) => (
+              <button key={nextPage} className={`page-btn${page === nextPage ? ' page-btn--active' : ''}`} onClick={() => setPage(nextPage)}>{nextPage}</button>
             ))}
-            <button className="page-btn" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next →</button>
+            <button className="page-btn" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>Next →</button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )

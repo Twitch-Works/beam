@@ -7,10 +7,13 @@ import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import { useActivity } from '@/hooks/useActivities'
 import { useSlots } from '@/hooks/useSlots'
+import { useAuth } from '@/lib/AuthContext'
+import { useLateOnboarding } from '@/lib/LateOnboardingContext'
 import { BookingWizardHeader } from '@/components/booking/BookingWizardHeader'
 import { ActivitySummaryBar } from '@/components/booking/ActivitySummaryBar'
 import { MonthCalendar } from '@/components/booking/MonthCalendar'
 import type { Slot } from '@/lib/api'
+import { MAIN_BOOKING_STEP_LABELS, getBookingTypeLabel } from '@/lib/booking-flow'
 
 const APP_MODE = process.env.EXPO_PUBLIC_APP_MODE ?? 'development'
 
@@ -54,11 +57,15 @@ function groupSlots(slots: Slot[]): { period: Period; slots: Slot[] }[] {
 
 export default function SlotPickerScreen() {
   const insets = useSafeAreaInsets()
-  const { id, bookingId, teacherId, teacherName } = useLocalSearchParams<{
+  const { session } = useAuth()
+  const { enabled } = useLateOnboarding()
+  const { id, bookingId, teacherId, teacherName, bookingType, bookingTypeLabel } = useLocalSearchParams<{
     id: string
     bookingId?: string
     teacherId?: string
     teacherName?: string
+    bookingType?: string
+    bookingTypeLabel?: string
   }>()
   const bookingWindowStart = addDaysISO(APP_MODE === 'development' ? 0 : 1)
 
@@ -68,6 +75,9 @@ export default function SlotPickerScreen() {
   const [step, setStep]               = useState<WizardStep>(1)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
+  const isReschedule = !!bookingId
+  const wizardLabels = isReschedule ? ['Slot', 'Payment'] : MAIN_BOOKING_STEP_LABELS
+  const wizardStep = isReschedule ? 1 : 2
 
   const availableDates = useMemo(() => {
     if (!slotsData?.slots) return []
@@ -116,22 +126,58 @@ export default function SlotPickerScreen() {
   async function handleContinue() {
     if (!selectedSlot || !selectedDate) return
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+
+    if (!session && enabled) {
+      router.push({
+        pathname: '/(auth)/login',
+        params: {
+          redirectTo: isReschedule
+            ? `/(root)/payment/${id}?bookingId=${bookingId ?? ''}&slotId=${selectedSlot.id}&date=${selectedDate}&time=${encodeURIComponent(formatTime(selectedSlot.startTime))}&duration=${activity ? `${activity.sessionDurationMins}` : ''}&price=${activity?.pricePerSession ?? '0'}`
+            : `/(root)/select-child/${id}?slotId=${selectedSlot.id}&date=${selectedDate}&time=${encodeURIComponent(formatTime(selectedSlot.startTime))}&duration=${activity ? `${activity.sessionDurationMins}` : ''}&price=${activity?.pricePerSession ?? '0'}&teacherId=${teacherId ?? ''}&teacherName=${encodeURIComponent(teacherName ?? '')}&bookingType=${bookingType ?? ''}&bookingTypeLabel=${encodeURIComponent(bookingTypeLabel ?? getBookingTypeLabel(bookingType))}`,
+        },
+      })
+      return
+    }
+
+    if (isReschedule) {
+      router.push({
+        pathname: `/(root)/payment/${id}`,
+        params: {
+          bookingId: bookingId ?? '',
+          slotId: selectedSlot.id,
+          date: selectedDate,
+          time: formatTime(selectedSlot.startTime),
+          duration: activity ? `${activity.sessionDurationMins}` : '',
+          price: activity?.pricePerSession ?? '0',
+        },
+      })
+      return
+    }
+
     router.push({
-      pathname: `/(root)/payment/${id}`,
+      pathname: `/(root)/select-child/${id}`,
       params: {
-        bookingId: bookingId ?? '',
-        slotId:   selectedSlot.id,
-        date:     selectedDate,
-        time:     formatTime(selectedSlot.startTime),
+        slotId: selectedSlot.id,
+        date: selectedDate,
+        time: formatTime(selectedSlot.startTime),
         duration: activity ? `${activity.sessionDurationMins}` : '',
-        price:    activity?.pricePerSession ?? '0',
+        price: activity?.pricePerSession ?? '0',
+        teacherId: teacherId ?? '',
+        teacherName: teacherName ?? '',
+        bookingType: bookingType ?? '',
+        bookingTypeLabel: bookingTypeLabel ?? getBookingTypeLabel(bookingType),
       },
     })
   }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <BookingWizardHeader step={step} totalSteps={3} onBack={handleBack} />
+      <BookingWizardHeader
+        step={wizardStep}
+        totalSteps={wizardLabels.length}
+        stepLabels={wizardLabels}
+        onBack={handleBack}
+      />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}>
         {/* Activity mini-card */}
@@ -139,7 +185,7 @@ export default function SlotPickerScreen() {
           title={activity?.title ?? '—'}
           teacherName={teacherName ?? null}
           durationMins={activity?.sessionDurationMins}
-          sessionType={activity?.sessionType}
+          deliveryMode={activity?.deliveryMode}
           price={price}
           imageUrl={activity?.imageUrl}
         />
@@ -245,7 +291,7 @@ export default function SlotPickerScreen() {
             activeOpacity={0.88}
           >
               <Text style={[styles.ctaBtnText, !selectedSlot && styles.ctaBtnTextDisabled]}>
-              {bookingId ? 'Review Reschedule' : 'Continue to Payment'}
+              {bookingId ? 'Review Reschedule' : 'Select Child'}
             </Text>
           </TouchableOpacity>
         </View>

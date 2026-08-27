@@ -8,15 +8,15 @@ interface ActivitySummaryBarProps {
   title: string
   teacherName?: string | null
   durationMins?: number | null
-  sessionType?: string | null
+  deliveryMode?: 'at_home' | 'online' | null
   price: number
   imageUrl?: string | null
 }
 
 export function ActivitySummaryBar({
-  title, teacherName, durationMins, sessionType, price, imageUrl,
+  title, teacherName, durationMins, deliveryMode, price, imageUrl,
 }: ActivitySummaryBarProps) {
-  const isAtHome = sessionType === 'home'
+  const isAtHome = deliveryMode === 'at_home'
 
   return (
     <View style={styles.card}>

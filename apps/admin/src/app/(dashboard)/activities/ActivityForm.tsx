@@ -17,6 +17,18 @@ export type FormState = {
   tags: string
   materialsNeeded: string
   preparationNotes: string
+  deliveryMode: 'at_home' | 'online'
+  venueType: 'indoor' | 'outdoor' | 'online' | 'at_home'
+  activityFormat: 'trial' | 'one_time' | 'recurring'
+  trialAvailable: 'true' | 'false'
+  locality: string
+  city: string
+  parentValue: string
+  sessionFlow: string
+  parentWaitingPolicy: string
+  accessibilityNotes: string
+  whatToBring: string
+  cancellationPolicy: string
   status: 'draft' | 'published' | 'archived'
 }
 
@@ -24,7 +36,11 @@ export const EMPTY_FORM: FormState = {
   title: '', categoryId: '', description: '', ageGroup: '',
   minChildren: '1', maxChildren: '1', sessionDuration: '60 minutes',
   pricePerSession: '', sessionType: '1:1', imageUrl: '', tags: '',
-  materialsNeeded: '', preparationNotes: '', status: 'draft',
+  materialsNeeded: '', preparationNotes: '',
+  deliveryMode: 'at_home', venueType: 'at_home', activityFormat: 'one_time', trialAvailable: 'false',
+  locality: '', city: '', parentValue: '', sessionFlow: '', parentWaitingPolicy: '',
+  accessibilityNotes: '', whatToBring: '', cancellationPolicy: '',
+  status: 'draft',
 }
 
 export const AGE_GROUPS = ['2-3 years', '3-5 years', '5-8 years', '8-12 years']
@@ -50,6 +66,18 @@ export function apiToForm(a: any): FormState {
     tags:              Array.isArray(a.tags) ? a.tags.join(', ') : (a.tags ?? ''),
     materialsNeeded:   a.materialsNeeded ?? '',
     preparationNotes:  a.preparationNotes ?? '',
+    deliveryMode:      a.deliveryMode ?? 'at_home',
+    venueType:         a.venueType ?? 'at_home',
+    activityFormat:    a.activityFormat ?? 'one_time',
+    trialAvailable:    a.trialAvailable ? 'true' : 'false',
+    locality:          a.locality ?? '',
+    city:              a.city ?? '',
+    parentValue:       a.parentValue ?? '',
+    sessionFlow:       a.sessionFlow ?? '',
+    parentWaitingPolicy: a.parentWaitingPolicy ?? '',
+    accessibilityNotes: a.accessibilityNotes ?? '',
+    whatToBring:       a.whatToBring ?? '',
+    cancellationPolicy: a.cancellationPolicy ?? '',
     status:            (a.status ?? 'draft') as FormState['status'],
   }
 }
@@ -57,6 +85,24 @@ export function apiToForm(a: any): FormState {
 const SESSION_TYPES = [
   { value: '1:1'   as const, label: '1:1 Individual', desc: 'Dedicated teacher–child time' },
   { value: 'group' as const, label: 'Group Session',  desc: 'Multiple children together'  },
+]
+
+const DELIVERY_MODES = [
+  { value: 'at_home' as const, label: 'At home' },
+  { value: 'online' as const, label: 'Online' },
+]
+
+const VENUE_TYPES = [
+  { value: 'at_home' as const, label: 'At home' },
+  { value: 'indoor' as const, label: 'Indoor' },
+  { value: 'outdoor' as const, label: 'Outdoor' },
+  { value: 'online' as const, label: 'Online' },
+]
+
+const ACTIVITY_FORMATS = [
+  { value: 'trial' as const, label: 'Trial' },
+  { value: 'one_time' as const, label: 'One-time' },
+  { value: 'recurring' as const, label: 'Recurring' },
 ]
 
 const STATUS_OPTIONS = [
@@ -162,6 +208,21 @@ export function ActivityForm({ value, onChange, mode = 'create', activityId, met
           </div>
         </div>
 
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label">Delivery Mode</label>
+            <select className="form-input" value={value.deliveryMode} onChange={set('deliveryMode')}>
+              {DELIVERY_MODES.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Venue Type</label>
+            <select className="form-input" value={value.venueType} onChange={set('venueType')}>
+              {VENUE_TYPES.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
+            </select>
+          </div>
+        </div>
+
         <div className="form-group">
           <label className="form-label">Description <span style={{ color: 'var(--color-coral)' }}>*</span></label>
           <textarea
@@ -206,6 +267,17 @@ export function ActivityForm({ value, onChange, mode = 'create', activityId, met
             </div>
           )}
         </div>
+
+        <div className="form-grid" style={{ marginBottom: 0 }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Locality</label>
+            <input className="form-input" placeholder="e.g. Indiranagar" value={value.locality} onChange={set('locality')} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">City</label>
+            <input className="form-input" placeholder="e.g. Bengaluru" value={value.city} onChange={set('city')} />
+          </div>
+        </div>
       </div>
 
       {/* ── Pricing & Session ── */}
@@ -249,6 +321,22 @@ export function ActivityForm({ value, onChange, mode = 'create', activityId, met
           </div>
         </div>
 
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label">Activity Format</label>
+            <select className="form-input" value={value.activityFormat} onChange={set('activityFormat')}>
+              {ACTIVITY_FORMATS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Trial Available</label>
+            <select className="form-input" value={value.trialAvailable} onChange={set('trialAvailable')}>
+              <option value="false">No</option>
+              <option value="true">Yes</option>
+            </select>
+          </div>
+        </div>
+
         {value.sessionType === 'group' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -274,6 +362,40 @@ export function ActivityForm({ value, onChange, mode = 'create', activityId, met
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Preparation Notes</label>
             <textarea className="form-input" style={{ height: 80, resize: 'vertical' }} placeholder="Setup notes for teachers…" value={value.preparationNotes} onChange={set('preparationNotes')} />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '24px 28px', borderBottom: mode === 'create' ? '1px solid var(--color-border)' : undefined }}>
+        <p className="form-section__title">Discovery & Trust Details</p>
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label">Why this activity</label>
+            <textarea className="form-input" style={{ height: 80, resize: 'vertical' }} placeholder="Parent-friendly value statement…" value={value.parentValue} onChange={set('parentValue')} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Session flow</label>
+            <textarea className="form-input" style={{ height: 80, resize: 'vertical' }} placeholder="Welcome, guided activity, creation, handover…" value={value.sessionFlow} onChange={set('sessionFlow')} />
+          </div>
+        </div>
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label">Parent waiting policy</label>
+            <textarea className="form-input" style={{ height: 72, resize: 'vertical' }} placeholder="Can the parent stay? pickup notes…" value={value.parentWaitingPolicy} onChange={set('parentWaitingPolicy')} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">What to bring</label>
+            <textarea className="form-input" style={{ height: 72, resize: 'vertical' }} placeholder="Water bottle, apron, socks…" value={value.whatToBring} onChange={set('whatToBring')} />
+          </div>
+        </div>
+        <div className="form-grid" style={{ marginBottom: 0 }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Accessibility notes</label>
+            <textarea className="form-input" style={{ height: 72, resize: 'vertical' }} placeholder="Stairs, wheelchair access, sensory accommodations…" value={value.accessibilityNotes} onChange={set('accessibilityNotes')} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Cancellation policy</label>
+            <textarea className="form-input" style={{ height: 72, resize: 'vertical' }} placeholder="Refund/cutoff rules shown to parents…" value={value.cancellationPolicy} onChange={set('cancellationPolicy')} />
           </div>
         </div>
       </div>

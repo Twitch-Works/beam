@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, fontSize, TAB_BAR_HEIGHT } from '@/constants/theme'
 import { useAuth } from '@/lib/AuthContext'
+import { useLateOnboarding } from '@/lib/LateOnboardingContext'
 import { useDeepLink } from '@/hooks/useDeepLink'
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -14,21 +15,22 @@ const TABS: {
   icon: IoniconName
   iconActive: IoniconName
 }[] = [
-  { name: 'index',    label: 'Home',     icon: 'home-outline',     iconActive: 'home' },
-  { name: 'explore',  label: 'Explore',  icon: 'compass-outline',  iconActive: 'compass' },
-  { name: 'bookings', label: 'Bookings', icon: 'calendar-outline', iconActive: 'calendar' },
-  { name: 'kids',     label: 'Kids',     icon: 'people-outline',   iconActive: 'people' },
-  { name: 'profile',  label: 'Profile',  icon: 'person-outline',   iconActive: 'person' },
+  { name: 'index',    label: 'Home',     icon: 'home-outline',      iconActive: 'home' },
+  { name: 'explore',  label: 'Explore',  icon: 'compass-outline',   iconActive: 'compass' },
+  { name: 'bookings', label: 'Bookings', icon: 'calendar-outline',  iconActive: 'calendar' },
+  { name: 'saved',    label: 'Saved',    icon: 'bookmark-outline',  iconActive: 'bookmark' },
+  { name: 'profile',  label: 'Profile',  icon: 'person-outline',    iconActive: 'person' },
 ]
 
 export default function RootLayout() {
   const insets = useSafeAreaInsets()
   const { session, isMockSession, isLoading } = useAuth()
+  const { enabled, isReady, state } = useLateOnboarding()
 
   // Wire deep links — only active after auth resolves
   useDeepLink()
 
-  if (isLoading) {
+  if (isLoading || !isReady) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white }}>
         <ActivityIndicator color={colors.primary} />
@@ -36,7 +38,11 @@ export default function RootLayout() {
     )
   }
 
-  if (!session && !isMockSession) {
+  if (!session && !isMockSession && enabled && !state.completed) {
+    return <Redirect href="/(auth)/late-onboarding/location" />
+  }
+
+  if (!session && !isMockSession && !enabled) {
     return <Redirect href="/(auth)" />
   }
 
@@ -83,12 +89,16 @@ export default function RootLayout() {
         />
       ))}
       <Tabs.Screen name="activity/[id]" options={{ href: null }} />
+      <Tabs.Screen name="choose-booking/[id]" options={{ href: null }} />
       <Tabs.Screen name="teacher/[id]" options={{ href: null }} />
       <Tabs.Screen name="booking/[id]" options={{ href: null }} />
       <Tabs.Screen name="slots/[id]" options={{ href: null }} />
+      <Tabs.Screen name="select-child/[id]" options={{ href: null }} />
+      <Tabs.Screen name="review-booking/[id]" options={{ href: null }} />
       <Tabs.Screen name="payment/[id]" options={{ href: null }} />
       <Tabs.Screen name="reels" options={{ href: null, tabBarStyle: { display: 'none' } }} />
       <Tabs.Screen name="child/[id]" options={{ href: null }} />
+      <Tabs.Screen name="kids" options={{ href: null }} />
     </Tabs>
   )
 }

@@ -34,9 +34,35 @@ function haversineExpr(lat: number, lng: number) {
 export async function catalogRoutes(fastify: FastifyInstance) {
   // GET /activities — public catalog listing
   fastify.get<{
-    Querystring: { category?: string; ageGroup?: string; search?: string; page?: string; limit?: string; lat?: string; lng?: string; radiusKm?: string }
+    Querystring: {
+      category?: string
+      ageGroup?: string
+      search?: string
+      activityFormat?: string
+      venueType?: string
+      trialAvailable?: string
+      timeOfDay?: string
+      page?: string
+      limit?: string
+      lat?: string
+      lng?: string
+      radiusKm?: string
+    }
   }>('/activities', async (req, reply) => {
-    const { category, ageGroup, search, page = '1', limit = '20', lat, lng, radiusKm = '10' } = req.query
+    const {
+      category,
+      ageGroup,
+      search,
+      activityFormat,
+      venueType,
+      trialAvailable,
+      timeOfDay,
+      page = '1',
+      limit = '20',
+      lat,
+      lng,
+      radiusKm = '10',
+    } = req.query
     const pageNum  = Math.max(1, parseInt(page))
     const limitNum = Math.min(50, parseInt(limit) || 20)
     const offset   = (pageNum - 1) * limitNum
@@ -48,10 +74,15 @@ export async function catalogRoutes(fastify: FastifyInstance) {
 
     const conditions = [eq(schema.activities.status, 'published')]
     if (ageGroup)  conditions.push(ilike(schema.activities.ageGroup, `%${ageGroup}%`))
+    if (category) conditions.push(ilike(schema.categories.name, category))
+    if (activityFormat) conditions.push(eq(schema.activities.activityFormat, activityFormat))
+    if (venueType) conditions.push(eq(schema.activities.venueType, venueType))
+    if (trialAvailable === 'true') conditions.push(eq(schema.activities.trialAvailable, true))
     if (search) {
       conditions.push(or(
         ilike(schema.activities.title, `%${search}%`),
         ilike(schema.activities.description, `%${search}%`),
+        ilike(schema.activities.locality, `%${search}%`),
       )!)
     }
     if (useLocation) {
@@ -61,10 +92,63 @@ export async function catalogRoutes(fastify: FastifyInstance) {
         AND ${haversineExpr(latNum, lngNum)} <= ${radiusNum}
       `)
     }
+    if (timeOfDay) {
+      const slotTimeCondition = timeOfDay === 'morning'
+        ? sql`slot.start_time < '12:00'`
+        : timeOfDay === 'afternoon'
+          ? sql`slot.start_time >= '12:00' AND slot.start_time < '17:00'`
+          : sql`slot.start_time >= '17:00'`
+      const fromStr = new Date().toISOString().split('T')[0]
+      const to = new Date()
+      to.setDate(to.getDate() + 7)
+      const toStr = to.toISOString().split('T')[0]
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM slots slot
+        WHERE slot.activity_id = ${schema.activities.id}
+          AND slot.is_available = true
+          AND slot.date >= ${fromStr}
+          AND slot.date <= ${toStr}
+          AND ${slotTimeCondition}
+      )`)
+    }
 
     const distanceCol = useLocation
       ? haversineExpr(latNum, lngNum)
       : sql<number | null>`NULL`
+    const totalBookingsCol = sql<number>`(
+      select count(*)::int from bookings booking
+      where booking.activity_id = ${schema.activities.id}
+    )`
+    const avgRatingCol = sql<number | null>`(
+      select avg(review.rating)::numeric from reviews review
+      where review.activity_id = ${schema.activities.id}
+    )`
+    const reviewCountCol = sql<number>`(
+      select count(*)::int from reviews review
+      where review.activity_id = ${schema.activities.id}
+    )`
+    const teacherCountCol = sql<number>`(
+      select count(distinct slot.teacher_id)::int from slots slot
+      where slot.activity_id = ${schema.activities.id}
+    )`
+    const nextAvailableDateCol = sql<string | null>`(
+      select slot.date from slots slot
+      where slot.activity_id = ${schema.activities.id}
+        and slot.is_available = true
+        and (${APP_MODE === 'development'} = true or (slot.date || 'T' || slot.start_time)::timestamp >= now() + interval '24 hours')
+        and (slot.date || 'T' || slot.start_time)::timestamp <= now() + interval '15 days'
+      order by slot.date asc, slot.start_time asc
+      limit 1
+    )`
+    const nextAvailableStartTimeCol = sql<string | null>`(
+      select slot.start_time from slots slot
+      where slot.activity_id = ${schema.activities.id}
+        and slot.is_available = true
+        and (${APP_MODE === 'development'} = true or (slot.date || 'T' || slot.start_time)::timestamp >= now() + interval '24 hours')
+        and (slot.date || 'T' || slot.start_time)::timestamp <= now() + interval '15 days'
+      order by slot.date asc, slot.start_time asc
+      limit 1
+    )`
 
     const rows = await db
       .select({
@@ -73,6 +157,10 @@ export async function catalogRoutes(fastify: FastifyInstance) {
         description:         schema.activities.description,
         ageGroup:            schema.activities.ageGroup,
         sessionType:         schema.activities.sessionType,
+        deliveryMode:        schema.activities.deliveryMode,
+        venueType:           schema.activities.venueType,
+        activityFormat:      schema.activities.activityFormat,
+        trialAvailable:      schema.activities.trialAvailable,
         sessionDurationMins: schema.activities.sessionDurationMins,
         pricePerSession:     schema.activities.pricePerSession,
         imageUrl:            schema.activities.imageUrl,
@@ -80,37 +168,31 @@ export async function catalogRoutes(fastify: FastifyInstance) {
         categoryId:          schema.activities.categoryId,
         categoryName:        schema.categories.name,
         categoryColor:       schema.categories.color,
-        totalBookings:       count(schema.bookings.id),
-        avgRating:           avg(schema.reviews.rating),
+        locality:            schema.activities.locality,
+        city:                schema.activities.city,
+        totalBookings:       totalBookingsCol,
+        avgRating:           avgRatingCol,
+        reviewCount:         reviewCountCol,
+        teacherCount:        teacherCountCol,
         distanceKm:          distanceCol,
+        nextAvailableDate:   nextAvailableDateCol,
+        nextAvailableStartTime: nextAvailableStartTimeCol,
       })
       .from(schema.activities)
       .leftJoin(schema.categories,  eq(schema.activities.categoryId, schema.categories.id))
-      .leftJoin(schema.bookings,    eq(schema.activities.id, schema.bookings.activityId))
-      .leftJoin(schema.reviews,     eq(schema.activities.id, schema.reviews.activityId))
       .where(and(...conditions))
-      .groupBy(
-        schema.activities.id,
-        schema.categories.id,
-        schema.categories.name,
-        schema.categories.color,
-      )
       .orderBy(useLocation ? distanceCol : desc(schema.activities.createdAt))
       .limit(limitNum)
       .offset(offset)
 
-    // Category filter applied in JS after groupBy to avoid complex sub-query
-    const filtered = category
-      ? rows.filter(r => r.categoryName?.toLowerCase() === category.toLowerCase())
-      : rows
-
     const [{ total }] = await db
       .select({ total: count() })
       .from(schema.activities)
+      .leftJoin(schema.categories, eq(schema.activities.categoryId, schema.categories.id))
       .where(and(...conditions))
 
     return reply.send({
-      items: filtered,
+      items: rows,
       total: Number(total),
       page: pageNum,
       limit: limitNum,
@@ -142,6 +224,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
         city: schema.users.city,
         verificationStatus: schema.teachers.verificationStatus,
         specializations: schema.teachers.specializations,
+        languages: schema.teachers.languages,
       })
       .from(schema.slots)
       .innerJoin(schema.users, eq(schema.slots.teacherId, schema.users.id))
@@ -171,18 +254,40 @@ export async function catalogRoutes(fastify: FastifyInstance) {
         return {
           ...teacherRow,
           specializations: teacherRow.specializations ?? [],
+          languages: teacherRow.languages ?? [],
           verificationStatus: teacherRow.verificationStatus ?? 'pending',
           totalSessions: Number(totalSessions ?? 0),
         }
       }),
     )
 
+    const [teacherCountRow] = await db
+      .select({ teacherCount: sql<number>`count(distinct ${schema.slots.teacherId})::int` })
+      .from(schema.slots)
+      .where(eq(schema.slots.activityId, id))
+
+    const [nextSlot] = await db
+      .select({
+        date: schema.slots.date,
+        startTime: schema.slots.startTime,
+      })
+      .from(schema.slots)
+      .where(and(
+        eq(schema.slots.activityId, id),
+        eq(schema.slots.isAvailable, true),
+      ))
+      .orderBy(schema.slots.date, schema.slots.startTime)
+      .limit(1)
+
     return reply.send({
       ...activity,
       avgRating:   ratingRow?.avgRating ?? null,
       reviewCount: Number(ratingRow?.reviewCount ?? 0),
+      teacherCount: Number(teacherCountRow?.teacherCount ?? 0),
       teacherId:   teachers[0]?.id ?? null,
       teachers,
+      nextAvailableDate: nextSlot?.date ?? null,
+      nextAvailableStartTime: nextSlot?.startTime ?? null,
     })
   })
 

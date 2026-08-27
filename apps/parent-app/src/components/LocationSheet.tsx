@@ -12,6 +12,8 @@ import * as Location from 'expo-location'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, fontSize } from '@/constants/theme'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/AuthContext'
+import { parentApi } from '@/lib/api'
 
 interface LocationSheetProps {
   visible: boolean
@@ -20,6 +22,7 @@ interface LocationSheetProps {
 }
 
 export function LocationSheet({ visible, onClose, onLocationSet }: LocationSheetProps) {
+  const { session, parentUserId } = useAuth()
   const [detecting, setDetecting] = useState(false)
   const [detected, setDetected] = useState<{ lat: number; lng: number; city: string } | null>(null)
 
@@ -54,12 +57,22 @@ export function LocationSheet({ visible, onClose, onLocationSet }: LocationSheet
 
   const handleUse = useCallback(async () => {
     if (!detected) return
-    await supabase.auth.updateUser({
-      data: { city: detected.city, lat: detected.lat, lng: detected.lng },
-    })
+    if (session?.user) {
+      await supabase.auth.updateUser({
+        data: { city: detected.city, lat: detected.lat, lng: detected.lng },
+      })
+      if (parentUserId) {
+        await parentApi.users.updateProfile({
+          userId: parentUserId,
+          city: detected.city,
+          latitude: detected.lat,
+          longitude: detected.lng,
+        })
+      }
+    }
     onLocationSet(detected.lat, detected.lng, detected.city)
     onClose()
-  }, [detected, onLocationSet, onClose])
+  }, [detected, onLocationSet, onClose, parentUserId, session?.user])
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

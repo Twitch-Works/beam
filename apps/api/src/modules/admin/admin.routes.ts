@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { and, count, desc, eq, gte, ilike, lte, or, sql, type SQL, aliasedTable } from 'drizzle-orm'
+import { and, count, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL, aliasedTable } from 'drizzle-orm'
 import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
 import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
@@ -57,6 +57,79 @@ function teacherMatchesActivitySpecialization(
   }
 
   return false
+}
+
+async function getLatestSessionIssuesMap(bookingIds: string[]) {
+  if (bookingIds.length === 0) return new Map<string, typeof schema.sessionIssues.$inferSelect>()
+
+  const rows = await db
+    .select()
+    .from(schema.sessionIssues)
+    .where(inArray(schema.sessionIssues.bookingId, bookingIds))
+    .orderBy(desc(schema.sessionIssues.reportedAt), desc(schema.sessionIssues.createdAt))
+
+  const map = new Map<string, typeof schema.sessionIssues.$inferSelect>()
+  for (const row of rows) {
+    if (!map.has(row.bookingId)) {
+      map.set(row.bookingId, row)
+    }
+  }
+
+  return map
+}
+
+async function createAdminAuditLog(input: {
+  action: string
+  entityType: string
+  entityId?: string | null
+  before?: unknown
+  after?: unknown
+}) {
+  await db.insert(schema.auditLogs).values({
+    actorRole: 'admin',
+    action: input.action,
+    entityType: input.entityType,
+    entityId: input.entityId ?? null,
+    before: input.before ?? null,
+    after: input.after ?? null,
+  })
+}
+
+async function createUserNotification(input: {
+  userId: string
+  type: string
+  title: string
+  body: string
+  data?: Record<string, unknown>
+}) {
+  await db.insert(schema.notifications).values({
+    userId: input.userId,
+    type: input.type,
+    title: input.title,
+    body: input.body,
+    data: input.data ?? null,
+  })
+}
+
+function getIssueNextAction(status: 'reported' | 'reviewing' | 'resolved', resolution: 'none' | 'refund' | 'credit' | 'support_only') {
+  if (status === 'resolved') {
+    if (resolution === 'refund') return 'Refund approved and being processed.'
+    if (resolution === 'credit') return 'Beam credit has been applied to your account.'
+    if (resolution === 'support_only') return 'Support has shared the final resolution for this case.'
+    return 'This case has been resolved.'
+  }
+
+  if (status === 'reviewing') {
+    return 'Beam ops is reviewing the details and will update you in the app.'
+  }
+
+  return 'Your case has been submitted and is waiting for Beam review.'
+}
+
+function buildAdminCaseReference() {
+  const stamp = Date.now().toString(36).slice(-6).toUpperCase()
+  const random = Math.random().toString(36).slice(2, 6).toUpperCase()
+  return `CASE-${stamp}${random}`
 }
 
 export async function adminRoutes(fastify: FastifyInstance) {
@@ -164,6 +237,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         parentCity: schema.users.city,
         activityTitle: schema.activities.title,
         childFirstName: schema.children.firstName,
+        reviewId: schema.reviews.id,
+        feedbackRating: schema.reviews.rating,
+        feedbackComment: schema.reviews.comment,
         teacher: sql<string | null>`nullif(trim(coalesce(${teacherUsers.firstName}, '') || ' ' || coalesce(${teacherUsers.lastName}, '')), '')`,
         paymentStatus: schema.payments.status,
       })
@@ -173,6 +249,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         .leftJoin(schema.activities, eq(schema.bookings.activityId, schema.activities.id))
         .leftJoin(schema.children, eq(schema.bookings.childId, schema.children.id))
         .leftJoin(schema.payments, eq(schema.bookings.id, schema.payments.bookingId))
+        .leftJoin(schema.reviews, eq(schema.bookings.id, schema.reviews.bookingId))
         .where(where)
         .orderBy(desc(schema.bookings.createdAt))
         .limit(limit)
@@ -186,7 +263,26 @@ export async function adminRoutes(fastify: FastifyInstance) {
         .where(where),
     ])
 
-    return reply.send({ items, total: totalResult[0].count, page, limit })
+    const latestIssues = await getLatestSessionIssuesMap(items.map((item) => item.id))
+
+    return reply.send({
+      items: items.map((item) => {
+        const latestIssue = latestIssues.get(item.id)
+        return {
+          ...item,
+          issueReported: !!latestIssue,
+          issueStatus: latestIssue?.status ?? null,
+          issueResolution: latestIssue?.resolution ?? null,
+          issueType: latestIssue?.issueType ?? null,
+          feedbackSubmitted: !!item.reviewId,
+          feedbackRating: item.feedbackRating ?? null,
+          feedbackComment: item.feedbackComment ?? null,
+        }
+      }),
+      total: totalResult[0].count,
+      page,
+      limit,
+    })
   })
 
   // ─── Booking Detail ────────────────────────────────────────────────────────
@@ -213,11 +309,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
       }) ?? null
     }
 
+    const latestIssue = await db.query.sessionIssues.findFirst({
+      where: eq(schema.sessionIssues.bookingId, req.params.id),
+      orderBy: [desc(schema.sessionIssues.reportedAt), desc(schema.sessionIssues.createdAt)],
+    })
+
     const payout = await db.query.payouts.findFirst({
       where: sql`${schema.payouts.bookingIds} @> ARRAY[${req.params.id}]::uuid[]`,
     })
 
-    return reply.send({ ...booking, teacher, payout })
+    return reply.send({ ...booking, teacher, payout, latestIssue })
   })
 
   // ─── Teachers List ─────────────────────────────────────────────────────────
@@ -328,15 +429,28 @@ export async function adminRoutes(fastify: FastifyInstance) {
         status: schema.activities.status,
         ageGroup: schema.activities.ageGroup,
         sessionType: schema.activities.sessionType,
+        deliveryMode: schema.activities.deliveryMode,
+        venueType: schema.activities.venueType,
+        activityFormat: schema.activities.activityFormat,
+        trialAvailable: schema.activities.trialAvailable,
         sessionDurationMins: schema.activities.sessionDurationMins,
         pricePerSession: schema.activities.pricePerSession,
         imageUrl: schema.activities.imageUrl,
         tags: schema.activities.tags,
+        locality: schema.activities.locality,
+        city: schema.activities.city,
+        parentValue: schema.activities.parentValue,
+        sessionFlow: schema.activities.sessionFlow,
+        parentWaitingPolicy: schema.activities.parentWaitingPolicy,
+        accessibilityNotes: schema.activities.accessibilityNotes,
+        whatToBring: schema.activities.whatToBring,
+        cancellationPolicy: schema.activities.cancellationPolicy,
         createdAt: schema.activities.createdAt,
         categoryName: schema.categories.name,
         categoryColor: schema.categories.color,
         totalBookings: sql<number>`(select count(*) from bookings where activity_id = ${schema.activities.id})`,
         avgRating: sql<number>`(select coalesce(avg(rating), 0) from reviews where activity_id = ${schema.activities.id})`,
+        teacherCount: sql<number>`(select count(distinct teacher_id) from slots where activity_id = ${schema.activities.id})`,
       })
         .from(schema.activities)
         .leftJoin(schema.categories, eq(schema.activities.categoryId, schema.categories.id))
@@ -408,7 +522,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     })
     if (!user) return reply.status(404).send({ error: 'User not found' })
 
-    const [childRows, bookingRows, spendResult] = await Promise.all([
+    const [childRows, bookingRows, spendResult, totalBookingsResult] = await Promise.all([
       db.select({
         id: schema.children.id,
         firstName: schema.children.firstName,
@@ -436,6 +550,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
       db.select({ total: sql<string>`coalesce(sum(total_amount), 0)` })
         .from(schema.bookings)
         .where(eq(schema.bookings.parentId, id)),
+
+      db.select({ count: count() })
+        .from(schema.bookings)
+        .where(eq(schema.bookings.parentId, id)),
     ])
 
     return reply.send({
@@ -445,6 +563,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       email: user.email,
       phone: user.phone,
       city: user.city,
+      role: user.role,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       children: childRows.map(c => ({
@@ -462,7 +581,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         activityTitle: b.activityTitle ?? '—',
         teacherName: b.teacherFirstName ? `${b.teacherFirstName} ${b.teacherLastName ?? ''}`.trim() : null,
       })),
-      totalBookings: bookingRows.length,
+      totalBookings: totalBookingsResult[0]?.count ?? 0,
       totalSpend: Number(spendResult[0].total),
     })
   })
@@ -478,6 +597,15 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     const conditions: SQL<unknown>[] = []
     if (req.query.status) conditions.push(eq(schema.payments.status, req.query.status as any))
+    if (req.query.search) {
+      const q = `%${req.query.search}%`
+      conditions.push(or(
+        ilike(schema.users.firstName, q),
+        ilike(schema.users.lastName, q),
+        ilike(schema.activities.title, q),
+        ilike(schema.payments.gatewayPaymentId, q),
+      )!)
+    }
 
     const where = conditions.length ? and(...conditions) : undefined
 
@@ -493,6 +621,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         createdAt: schema.payments.createdAt,
         parentFirstName: schema.users.firstName,
         parentLastName: schema.users.lastName,
+        bookingStatus: schema.bookings.status,
         activityTitle: schema.activities.title,
       })
         .from(schema.payments)
@@ -535,15 +664,29 @@ export async function adminRoutes(fastify: FastifyInstance) {
   // ─── Reviews List ──────────────────────────────────────────────────────────
 
   fastify.get<{
-    Querystring: { minRating?: string; flagged?: string; search?: string }
+    Querystring: { minRating?: string; maxRating?: string; flagged?: string; search?: string }
   }>('/admin/reviews', async (req, reply) => {
     const conditions: SQL<unknown>[] = []
     if (req.query.minRating) {
       conditions.push(gte(schema.reviews.rating, Number(req.query.minRating)))
     }
+    if (req.query.maxRating) {
+      conditions.push(lte(schema.reviews.rating, Number(req.query.maxRating)))
+    }
     if (req.query.flagged === 'true') {
       conditions.push(eq(schema.reviews.isFlagged, true))
     }
+    if (req.query.search) {
+      const q = `%${req.query.search}%`
+      conditions.push(or(
+        ilike(schema.users.firstName, q),
+        ilike(schema.users.lastName, q),
+        ilike(schema.activities.title, q),
+        ilike(schema.reviews.comment, q),
+      )!)
+    }
+
+    const reviewTeachers = aliasedTable(schema.users, 'review_teachers')
 
     const items = await db.select({
       id: schema.reviews.id,
@@ -551,6 +694,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       comment: schema.reviews.comment,
       isFlagged: schema.reviews.isFlagged,
       createdAt: schema.reviews.createdAt,
+      teacherFirstName: reviewTeachers.firstName,
+      teacherLastName: reviewTeachers.lastName,
       parentFirstName: schema.users.firstName,
       parentLastName: schema.users.lastName,
       activityTitle: schema.activities.title,
@@ -558,6 +703,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     })
       .from(schema.reviews)
       .leftJoin(schema.users, eq(schema.reviews.parentId, schema.users.id))
+      .leftJoin(reviewTeachers, eq(schema.reviews.teacherId, reviewTeachers.id))
       .leftJoin(schema.activities, eq(schema.reviews.activityId, schema.activities.id))
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(schema.reviews.createdAt))
@@ -575,6 +721,220 @@ export async function adminRoutes(fastify: FastifyInstance) {
       avgRating: Number(avgResult[0].avg).toFixed(1),
       flagged: flaggedResult[0].count,
     })
+  })
+
+  fastify.patch<{ Params: { id: string }; Body: { flagged: boolean } }>(
+    '/admin/reviews/:id/flag',
+    async (req, reply) => {
+      const review = await db.query.reviews.findFirst({
+        where: eq(schema.reviews.id, req.params.id),
+      })
+      if (!review) return reply.status(404).send({ error: 'Review not found' })
+
+      const [updated] = await db
+        .update(schema.reviews)
+        .set({ isFlagged: req.body.flagged, updatedAt: new Date() })
+        .where(eq(schema.reviews.id, req.params.id))
+        .returning()
+
+      await createAdminAuditLog({
+        action: req.body.flagged ? 'review.flagged' : 'review.unflagged',
+        entityType: 'review',
+        entityId: updated.id,
+        before: review,
+        after: updated,
+      })
+
+      return reply.send({ ok: true, review: updated })
+    }
+  )
+
+  fastify.post<{
+    Params: { id: string }
+    Body: {
+      issueType?: 'no_show' | 'venue_issue' | 'safety_issue' | 'schedule_issue' | 'other'
+      resolution?: 'none' | 'refund' | 'credit' | 'support_only'
+      description?: string
+    }
+  }>('/admin/reviews/:id/escalate', async (req, reply) => {
+    const review = await db.query.reviews.findFirst({
+      where: eq(schema.reviews.id, req.params.id),
+    })
+    if (!review) return reply.status(404).send({ error: 'Review not found' })
+
+    const booking = await db.query.bookings.findFirst({
+      where: eq(schema.bookings.id, review.bookingId),
+    })
+    if (!booking) return reply.status(404).send({ error: 'Booking not found for review' })
+
+    const existingIssue = await db.query.sessionIssues.findFirst({
+      where: eq(schema.sessionIssues.bookingId, review.bookingId),
+      orderBy: [desc(schema.sessionIssues.reportedAt), desc(schema.sessionIssues.createdAt)],
+    })
+
+    let issue: typeof schema.sessionIssues.$inferSelect
+
+    if (existingIssue && existingIssue.status !== 'resolved') {
+      const [updatedIssue] = await db
+        .update(schema.sessionIssues)
+        .set({
+          status: 'reviewing',
+          resolution: req.body.resolution ?? existingIssue.resolution,
+          description: req.body.description ?? existingIssue.description,
+          desiredOutcome:
+            req.body.resolution === 'refund'
+              ? 'refund'
+              : req.body.resolution === 'credit'
+                ? 'credit'
+                : existingIssue.desiredOutcome,
+          nextAction: getIssueNextAction('reviewing', req.body.resolution ?? existingIssue.resolution),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.sessionIssues.id, existingIssue.id))
+        .returning()
+      issue = updatedIssue
+    } else {
+      const [createdIssue] = await db
+        .insert(schema.sessionIssues)
+        .values({
+          bookingId: review.bookingId,
+          parentId: review.parentId,
+          teacherId: review.teacherId,
+          caseReference: buildAdminCaseReference(),
+          issueType: req.body.issueType ?? 'other',
+          description: req.body.description ?? review.comment ?? 'Escalated from admin review queue',
+          status: 'reviewing',
+          resolution: req.body.resolution ?? 'support_only',
+          desiredOutcome:
+            req.body.resolution === 'refund'
+              ? 'refund'
+              : req.body.resolution === 'credit'
+                ? 'credit'
+                : 'support',
+          nextAction: getIssueNextAction('reviewing', req.body.resolution ?? 'support_only'),
+          slaTargetAt: new Date(new Date().setHours(18, 0, 0, 0)),
+        })
+        .returning()
+      issue = createdIssue
+    }
+
+    const [updatedReview] = await db
+      .update(schema.reviews)
+      .set({ isFlagged: true, updatedAt: new Date() })
+      .where(eq(schema.reviews.id, req.params.id))
+      .returning()
+
+    await createAdminAuditLog({
+      action: 'review.escalated',
+      entityType: 'review',
+      entityId: updatedReview.id,
+      before: review,
+      after: { review: updatedReview, sessionIssueId: issue.id },
+    })
+
+    await createUserNotification({
+      userId: review.parentId,
+      type: 'review.escalated',
+      title: 'Support is reviewing your feedback',
+      body: 'A Beam admin has opened a support review for your session feedback.',
+      data: { bookingId: review.bookingId, reviewId: review.id, sessionIssueId: issue.id },
+    })
+
+    return reply.send({ ok: true, review: updatedReview, issue })
+  })
+
+  fastify.patch<{
+    Params: { id: string }
+    Body: {
+      status?: 'reported' | 'reviewing' | 'resolved'
+      resolution?: 'none' | 'refund' | 'credit' | 'support_only'
+      description?: string
+    }
+  }>('/admin/session-issues/:id', async (req, reply) => {
+    const issue = await db.query.sessionIssues.findFirst({
+      where: eq(schema.sessionIssues.id, req.params.id),
+    })
+    if (!issue) return reply.status(404).send({ error: 'Session issue not found' })
+
+    const booking = await db.query.bookings.findFirst({
+      where: eq(schema.bookings.id, issue.bookingId),
+    })
+
+    const now = new Date()
+    const nextStatus = req.body.status ?? issue.status
+    const nextResolution = req.body.resolution ?? issue.resolution
+
+    const [updatedIssue] = await db
+      .update(schema.sessionIssues)
+      .set({
+        status: nextStatus,
+        resolution: nextResolution,
+        desiredOutcome:
+          nextResolution === 'refund'
+            ? 'refund'
+            : nextResolution === 'credit'
+              ? 'credit'
+              : issue.desiredOutcome,
+        description: req.body.description ?? issue.description,
+        nextAction: getIssueNextAction(nextStatus, nextResolution),
+        resolvedAt: nextStatus === 'resolved' ? now : null,
+        updatedAt: now,
+      })
+      .where(eq(schema.sessionIssues.id, req.params.id))
+      .returning()
+
+    let refundedPayment: typeof schema.payments.$inferSelect | null = null
+    if (nextStatus === 'resolved' && nextResolution === 'refund') {
+      const payment = await db.query.payments.findFirst({
+        where: eq(schema.payments.bookingId, issue.bookingId),
+      })
+
+      if (payment && payment.status === 'success') {
+        const [updatedPayment] = await db
+          .update(schema.payments)
+          .set({ status: 'refunded', refundedAt: now, updatedAt: now })
+          .where(eq(schema.payments.id, payment.id))
+          .returning()
+        refundedPayment = updatedPayment
+
+        await createAdminAuditLog({
+          action: 'payment.refunded_via_issue',
+          entityType: 'payment',
+          entityId: updatedPayment.id,
+          before: payment,
+          after: updatedPayment,
+        })
+      }
+    }
+
+    await createAdminAuditLog({
+      action: 'session_issue.updated',
+      entityType: 'session_issue',
+      entityId: updatedIssue.id,
+      before: issue,
+      after: updatedIssue,
+    })
+
+    if (booking?.parentId) {
+      const resolutionCopy =
+        nextStatus === 'resolved'
+          ? nextResolution === 'refund'
+            ? 'We have resolved your issue and processed the refund.'
+            : nextResolution === 'credit'
+              ? 'We have resolved your issue and applied support credit.'
+              : 'We have resolved your issue and updated the support case.'
+          : 'A Beam admin is reviewing your reported issue.'
+
+      await createUserNotification({
+        userId: booking.parentId,
+        type: 'session_issue.updated',
+        title: nextStatus === 'resolved' ? 'Issue resolved' : 'Issue under review',
+        body: resolutionCopy,
+        data: { bookingId: issue.bookingId, sessionIssueId: updatedIssue.id, resolution: nextResolution, status: nextStatus },
+      })
+    }
+
+    return reply.send({ ok: true, issue: updatedIssue, payment: refundedPayment })
   })
 
   // ─── Verification Queue ────────────────────────────────────────────────────
@@ -652,6 +1012,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
         status: schema.activities.status,
         ageGroup: schema.activities.ageGroup,
         sessionType: schema.activities.sessionType,
+        deliveryMode: schema.activities.deliveryMode,
+        venueType: schema.activities.venueType,
+        activityFormat: schema.activities.activityFormat,
+        trialAvailable: schema.activities.trialAvailable,
         sessionDurationMins: schema.activities.sessionDurationMins,
         minChildren: schema.activities.minChildren,
         maxChildren: schema.activities.maxChildren,
@@ -660,10 +1024,19 @@ export async function adminRoutes(fastify: FastifyInstance) {
         tags: schema.activities.tags,
         materialsNeeded: schema.activities.materialsNeeded,
         preparationNotes: schema.activities.preparationNotes,
+        locality: schema.activities.locality,
+        city: schema.activities.city,
+        parentValue: schema.activities.parentValue,
+        sessionFlow: schema.activities.sessionFlow,
+        parentWaitingPolicy: schema.activities.parentWaitingPolicy,
+        accessibilityNotes: schema.activities.accessibilityNotes,
+        whatToBring: schema.activities.whatToBring,
+        cancellationPolicy: schema.activities.cancellationPolicy,
         createdAt: schema.activities.createdAt,
         categoryName: schema.categories.name,
         totalBookings: sql<number>`(select count(*) from bookings where activity_id = ${schema.activities.id})`,
         avgRating: sql<number>`(select coalesce(avg(rating), 0) from reviews where activity_id = ${schema.activities.id})`,
+        teacherCount: sql<number>`(select count(distinct teacher_id) from slots where activity_id = ${schema.activities.id})`,
       })
       .from(schema.activities)
       .leftJoin(schema.categories, eq(schema.activities.categoryId, schema.categories.id))
@@ -680,7 +1053,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const {
       title, description, ageGroup, pricePerSession, categoryId, sessionType,
       sessionDurationMins, minChildren, maxChildren, imageUrl, tags,
-      materialsNeeded, preparationNotes, status,
+      materialsNeeded, preparationNotes, status, deliveryMode, venueType,
+      activityFormat, trialAvailable, locality, city, parentValue, sessionFlow,
+      parentWaitingPolicy, accessibilityNotes, whatToBring, cancellationPolicy,
     } = req.body as any
 
     const [updated] = await db
@@ -692,6 +1067,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
         ...(pricePerSession !== undefined && { pricePerSession: String(pricePerSession) }),
         ...(categoryId !== undefined && { categoryId: String(categoryId) }),
         ...(sessionType !== undefined && { sessionType: sessionType as '1:1' | 'group' }),
+        ...(deliveryMode !== undefined && { deliveryMode: deliveryMode as 'at_home' | 'online' }),
+        ...(venueType !== undefined && { venueType: venueType as 'indoor' | 'outdoor' | 'online' | 'at_home' }),
+        ...(activityFormat !== undefined && { activityFormat: activityFormat as 'trial' | 'one_time' | 'recurring' }),
+        ...(trialAvailable !== undefined && { trialAvailable: Boolean(trialAvailable) }),
         ...(sessionDurationMins !== undefined && { sessionDurationMins: Number(sessionDurationMins) }),
         ...(minChildren !== undefined && { minChildren: Number(minChildren) }),
         ...(maxChildren !== undefined && { maxChildren: Number(maxChildren) }),
@@ -699,6 +1078,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
         ...(tags !== undefined && { tags: Array.isArray(tags) ? tags as string[] : (typeof tags === 'string' && tags ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []) }),
         ...(materialsNeeded !== undefined && { materialsNeeded: materialsNeeded ? String(materialsNeeded) : null }),
         ...(preparationNotes !== undefined && { preparationNotes: preparationNotes ? String(preparationNotes) : null }),
+        ...(locality !== undefined && { locality: locality ? String(locality) : null }),
+        ...(city !== undefined && { city: city ? String(city) : null }),
+        ...(parentValue !== undefined && { parentValue: parentValue ? String(parentValue) : null }),
+        ...(sessionFlow !== undefined && { sessionFlow: sessionFlow ? String(sessionFlow) : null }),
+        ...(parentWaitingPolicy !== undefined && { parentWaitingPolicy: parentWaitingPolicy ? String(parentWaitingPolicy) : null }),
+        ...(accessibilityNotes !== undefined && { accessibilityNotes: accessibilityNotes ? String(accessibilityNotes) : null }),
+        ...(whatToBring !== undefined && { whatToBring: whatToBring ? String(whatToBring) : null }),
+        ...(cancellationPolicy !== undefined && { cancellationPolicy: cancellationPolicy ? String(cancellationPolicy) : null }),
         ...(status !== undefined && { status: status as 'draft' | 'published' | 'archived' }),
         updatedAt: new Date(),
       })
@@ -716,6 +1103,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const {
       title, categoryId, description, ageGroup, sessionType, minChildren, maxChildren,
       sessionDurationMins, pricePerSession, imageUrl, tags, materialsNeeded, preparationNotes, status,
+      deliveryMode, venueType, activityFormat, trialAvailable, locality, city,
+      parentValue, sessionFlow, parentWaitingPolicy, accessibilityNotes,
+      whatToBring, cancellationPolicy,
     } = body
 
     if (!title || !description || !ageGroup || !pricePerSession || !categoryId) {
@@ -728,6 +1118,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
       description: String(description),
       ageGroup: String(ageGroup),
       sessionType: (sessionType as '1:1' | 'group') ?? '1:1',
+      deliveryMode: (deliveryMode as 'at_home' | 'online') ?? 'at_home',
+      venueType: (venueType as 'indoor' | 'outdoor' | 'online' | 'at_home') ?? 'at_home',
+      activityFormat: (activityFormat as 'trial' | 'one_time' | 'recurring') ?? 'one_time',
+      trialAvailable: Boolean(trialAvailable),
       minChildren: minChildren ? Number(minChildren) : 1,
       maxChildren: maxChildren ? Number(maxChildren) : 1,
       sessionDurationMins: sessionDurationMins ? Number(sessionDurationMins) : 60,
@@ -736,6 +1130,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
       tags: Array.isArray(tags) ? tags as string[] : (typeof tags === 'string' && tags ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []),
       materialsNeeded: materialsNeeded ? String(materialsNeeded) : null,
       preparationNotes: preparationNotes ? String(preparationNotes) : null,
+      locality: locality ? String(locality) : null,
+      city: city ? String(city) : null,
+      parentValue: parentValue ? String(parentValue) : null,
+      sessionFlow: sessionFlow ? String(sessionFlow) : null,
+      parentWaitingPolicy: parentWaitingPolicy ? String(parentWaitingPolicy) : null,
+      accessibilityNotes: accessibilityNotes ? String(accessibilityNotes) : null,
+      whatToBring: whatToBring ? String(whatToBring) : null,
+      cancellationPolicy: cancellationPolicy ? String(cancellationPolicy) : null,
       status: (status as 'draft' | 'published' | 'archived') ?? 'draft',
     }).returning()
 
@@ -984,14 +1386,132 @@ export async function adminRoutes(fastify: FastifyInstance) {
     if (!payment) return reply.status(404).send({ error: 'Payment not found' })
     if (payment.status === 'refunded') return reply.status(422).send({ error: 'Payment already refunded' })
 
+    const booking = await db.query.bookings.findFirst({
+      where: eq(schema.bookings.id, bookingId),
+    })
+
     const [updated] = await db
       .update(schema.payments)
       .set({ status: 'refunded', refundedAt: new Date(), updatedAt: new Date() })
       .where(eq(schema.payments.bookingId, bookingId))
       .returning()
 
+    await createAdminAuditLog({
+      action: 'payment.refunded',
+      entityType: 'payment',
+      entityId: updated.id,
+      before: payment,
+      after: updated,
+    })
+
+    if (booking?.parentId) {
+      await createUserNotification({
+        userId: booking.parentId,
+        type: 'payment.refunded',
+        title: 'Refund processed',
+        body: 'Your Beam booking refund has been processed.',
+        data: { bookingId, paymentId: updated.id },
+      })
+    }
+
     return reply.send({ ok: true, payment: updated })
   })
+
+  fastify.post<{ Params: { bookingId: string } }>('/admin/payments/:bookingId/retry', async (req, reply) => {
+    const { bookingId } = req.params
+
+    const payment = await db.query.payments.findFirst({
+      where: eq(schema.payments.bookingId, bookingId),
+    })
+    if (!payment) return reply.status(404).send({ error: 'Payment not found' })
+    if (payment.status !== 'failed') return reply.status(422).send({ error: 'Only failed payments can be retried' })
+
+    const booking = await db.query.bookings.findFirst({
+      where: eq(schema.bookings.id, bookingId),
+    })
+
+    const [updated] = await db
+      .update(schema.payments)
+      .set({ status: 'pending', updatedAt: new Date() })
+      .where(eq(schema.payments.bookingId, bookingId))
+      .returning()
+
+    await createAdminAuditLog({
+      action: 'payment.retry_requested',
+      entityType: 'payment',
+      entityId: updated.id,
+      before: payment,
+      after: updated,
+    })
+
+    if (booking?.parentId) {
+      await createUserNotification({
+        userId: booking.parentId,
+        type: 'payment.retry_requested',
+        title: 'Payment retry initiated',
+        body: 'We have reopened your payment so it can be completed again.',
+        data: { bookingId, paymentId: updated.id },
+      })
+    }
+
+    return reply.send({ ok: true, payment: updated })
+  })
+
+  fastify.patch<{ Params: { id: string }; Body: { action: 'dispatch' | 'settle' | 'retry' } }>(
+    '/admin/payouts/:id',
+    async (req, reply) => {
+      const payout = await db.query.payouts.findFirst({
+        where: eq(schema.payouts.id, req.params.id),
+      })
+      if (!payout) return reply.status(404).send({ error: 'Payout not found' })
+
+      const { action } = req.body
+      const now = new Date()
+      let nextValues: Partial<typeof schema.payouts.$inferInsert> | null = null
+
+      if (action === 'dispatch') {
+        if (payout.status !== 'queued') return reply.status(422).send({ error: 'Only queued payouts can be dispatched' })
+        nextValues = { status: 'dispatched', scheduledAt: payout.scheduledAt ?? now }
+      } else if (action === 'settle') {
+        if (payout.status !== 'dispatched') return reply.status(422).send({ error: 'Only dispatched payouts can be settled' })
+        nextValues = { status: 'settled', settledAt: now }
+      } else if (action === 'retry') {
+        if (payout.status !== 'failed') return reply.status(422).send({ error: 'Only failed payouts can be retried' })
+        nextValues = { status: 'queued', settledAt: null, scheduledAt: now }
+      }
+
+      if (!nextValues) return reply.status(400).send({ error: 'Invalid payout action' })
+
+      const [updated] = await db
+        .update(schema.payouts)
+        .set(nextValues)
+        .where(eq(schema.payouts.id, req.params.id))
+        .returning()
+
+      await createAdminAuditLog({
+        action: `payout.${action}`,
+        entityType: 'payout',
+        entityId: updated.id,
+        before: payout,
+        after: updated,
+      })
+
+      await createUserNotification({
+        userId: payout.teacherId,
+        type: `payout.${action}`,
+        title: action === 'settle' ? 'Payout settled' : action === 'dispatch' ? 'Payout dispatched' : 'Payout re-queued',
+        body:
+          action === 'settle'
+            ? 'Your Beam payout has been settled.'
+            : action === 'dispatch'
+              ? 'Your Beam payout has been dispatched.'
+              : 'Your Beam payout has been re-queued for processing.',
+        data: { payoutId: updated.id, action },
+      })
+
+      return reply.send({ ok: true, payout: updated })
+    }
+  )
 
   // ─── Assign Teacher to Booking ─────────────────────────────────────────────
 
@@ -1070,7 +1590,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const filterStatus = req.query.status
     const search = req.query.search ? req.query.search.toLowerCase() : ''
 
-    const [refundRows, qualityRows, billingRows] = await Promise.all([
+    const [refundRows, issueRows, qualityRows, billingRows] = await Promise.all([
       // Refund disputes — cancelled bookings with refunded payments
       filterType && filterType !== 'refund' ? [] : db.select({
         sourceId: schema.bookings.id,
@@ -1086,9 +1606,30 @@ export async function adminRoutes(fastify: FastifyInstance) {
         .leftJoin(schema.activities, eq(schema.bookings.activityId, schema.activities.id))
         .where(and(eq(schema.bookings.status, 'cancelled'), eq(schema.payments.status, 'refunded'))),
 
+      // Session issues — no-show / quality / resolution requests
+      filterType && !['no_show', 'quality', 'refund'].includes(filterType) ? [] : db.select({
+        sourceId: schema.sessionIssues.id,
+        bookingId: schema.sessionIssues.bookingId,
+        amount: schema.payments.amount,
+        parentFirstName: schema.users.firstName,
+        parentLastName: schema.users.lastName,
+        activityTitle: schema.activities.title,
+        createdAt: schema.sessionIssues.reportedAt,
+        issueType: schema.sessionIssues.issueType,
+        issueStatus: schema.sessionIssues.status,
+        issueResolution: schema.sessionIssues.resolution,
+        issueDescription: schema.sessionIssues.description,
+      })
+        .from(schema.sessionIssues)
+        .leftJoin(schema.bookings, eq(schema.sessionIssues.bookingId, schema.bookings.id))
+        .leftJoin(schema.payments, eq(schema.bookings.id, schema.payments.bookingId))
+        .leftJoin(schema.users, eq(schema.sessionIssues.parentId, schema.users.id))
+        .leftJoin(schema.activities, eq(schema.bookings.activityId, schema.activities.id)),
+
       // Quality disputes — flagged reviews
       filterType && filterType !== 'quality' ? [] : db.select({
         sourceId: schema.reviews.id,
+        bookingId: schema.reviews.bookingId,
         amount: sql<string>`'0'`,
         parentFirstName: schema.users.firstName,
         parentLastName: schema.users.lastName,
@@ -1103,6 +1644,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       // Billing disputes — failed payments
       filterType && filterType !== 'billing' ? [] : db.select({
         sourceId: schema.payments.id,
+        bookingId: schema.payments.bookingId,
         amount: schema.payments.amount,
         parentFirstName: schema.users.firstName,
         parentLastName: schema.users.lastName,
@@ -1118,7 +1660,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     type DisputeRow = {
       id: string; type: string; status: string; priority: string;
-      amount: number; parentName: string; activityTitle: string; createdAt: Date | string | null
+      amount: number; parentName: string; activityTitle: string; createdAt: Date | string | null; note?: string | null;
+      sourceType: 'booking' | 'session_issue' | 'review' | 'payment'; sourceId: string; bookingId?: string | null
     }
 
     const toDispute = (row: typeof refundRows[0], type: string): DisputeRow => {
@@ -1132,13 +1675,55 @@ export async function adminRoutes(fastify: FastifyInstance) {
         parentName: `${row.parentFirstName ?? ''} ${row.parentLastName ?? ''}`.trim(),
         activityTitle: row.activityTitle ?? '',
         createdAt: row.createdAt,
+        sourceType: type === 'billing' ? 'payment' : 'booking',
+        sourceId: row.sourceId,
+        bookingId: type === 'billing' ? null : row.sourceId,
+      }
+    }
+
+    const toIssueDispute = (row: (typeof issueRows)[0]): DisputeRow => {
+      const mappedType =
+        row.issueType === 'no_show'
+          ? 'no_show'
+          : row.issueResolution === 'refund'
+            ? 'refund'
+            : 'quality'
+      const amount = Number(row.amount ?? 0)
+      return {
+        id: `${mappedType[0].toUpperCase()}-${row.sourceId.slice(0, 8).toUpperCase()}`,
+        type: mappedType,
+        status:
+          row.issueStatus === 'reviewing'
+            ? 'under_review'
+            : row.issueStatus === 'resolved'
+              ? 'resolved'
+              : 'open',
+        priority:
+          row.issueType === 'safety_issue' || row.issueType === 'no_show'
+            ? 'high'
+            : amount > 500
+              ? 'high'
+              : amount > 200
+                ? 'medium'
+                : 'low',
+        amount,
+        parentName: `${row.parentFirstName ?? ''} ${row.parentLastName ?? ''}`.trim(),
+        activityTitle: row.activityTitle ?? '',
+        createdAt: row.createdAt,
+        note: row.issueDescription ?? null,
+        sourceType: 'session_issue',
+        sourceId: row.sourceId,
+        bookingId: row.bookingId,
       }
     }
 
     let all: DisputeRow[] = [
       ...refundRows.map(r => toDispute(r as any, 'refund')),
-      ...qualityRows.map(r => toDispute(r as any, 'quality')),
-      ...billingRows.map(r => toDispute(r as any, 'billing')),
+      ...issueRows
+        .map((r) => toIssueDispute(r as any))
+        .filter((item) => !filterType || filterType === item.type),
+      ...qualityRows.map(r => ({ ...toDispute(r as any, 'quality'), sourceType: 'review' as const, bookingId: (r as any).bookingId ?? null })),
+      ...billingRows.map(r => ({ ...toDispute(r as any, 'billing'), sourceType: 'payment' as const, bookingId: (r as any).bookingId ?? null })),
     ]
 
     if (search) {
@@ -1157,6 +1742,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const items = all.slice((page - 1) * limit, page * limit)
 
     const open = all.filter(d => d.status === 'open').length
+    const underReview = all.filter(d => d.status === 'under_review').length
     const highPriority = all.filter(d => d.priority === 'high').length
     const refundAtRisk = refundRows.reduce((s, r) => s + Number((r as any).amount ?? 0), 0)
 
@@ -1165,7 +1751,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       total,
       page,
       limit,
-      kpis: { open, underReview: 0, highPriority, refundAtRisk },
+      kpis: { open, underReview, highPriority, refundAtRisk },
     })
   })
 

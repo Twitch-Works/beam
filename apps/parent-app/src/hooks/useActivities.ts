@@ -5,6 +5,10 @@ type Filters = {
   category?: string
   ageGroup?: string
   search?: string
+  activityFormat?: string
+  venueType?: string
+  trialAvailable?: boolean
+  timeOfDay?: 'morning' | 'afternoon' | 'evening'
   page?: number
   limit?: number
   lat?: number
@@ -19,6 +23,10 @@ export function useActivities(filters?: Filters) {
       filters?.category,
       filters?.ageGroup,
       filters?.search,
+      filters?.activityFormat,
+      filters?.venueType,
+      filters?.trialAvailable,
+      filters?.timeOfDay,
       filters?.page,
       filters?.limit,
       filters?.lat,

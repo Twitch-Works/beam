@@ -29,6 +29,11 @@ interface Booking {
   amount: number
   createdAt: string
   paymentStatus?: string | null
+  issueReported?: boolean
+  issueStatus?: string | null
+  issueResolution?: string | null
+  feedbackSubmitted?: boolean
+  feedbackRating?: number | null
 }
 
 const MOCK_BOOKINGS: Booking[] = [
@@ -54,7 +59,6 @@ const MOCK_BOOKINGS: Booking[] = [
   { id: 'BK020', rawId: '', parentName: 'Suresh Reddy', childName: 'Nik Reddy', activity: 'English Communication', teacher: 'Sameer Malhotra', city: 'Hyderabad', date: '2024-05-09', time: '7:00 PM', status: 'confirmed', amount: 500, createdAt: '2024-05-06' },
 ]
 
-const CITIES = ['All Cities', ...Array.from(new Set(MOCK_BOOKINGS.map(b => b.city))).sort()]
 const PAGE_SIZE = 10
 
 export default function BookingsPage() {
@@ -91,6 +95,11 @@ export default function BookingsPage() {
           amount: Number(b.totalAmount),
           createdAt: new Date(b.createdAt).toISOString().split('T')[0],
           paymentStatus: b.paymentStatus ?? null,
+          issueReported: Boolean(b.issueReported),
+          issueStatus: b.issueStatus ?? null,
+          issueResolution: b.issueResolution ?? null,
+          feedbackSubmitted: Boolean(b.feedbackSubmitted),
+          feedbackRating: b.feedbackRating != null ? Number(b.feedbackRating) : null,
         })))
         setApiUnavailable(false)
       } catch {
@@ -101,6 +110,7 @@ export default function BookingsPage() {
   }, [USE_MOCK_DATA, status, search, page])
 
   const activeBookings = USE_MOCK_DATA ? MOCK_BOOKINGS : (liveBookings ?? MOCK_BOOKINGS)
+  const cityOptions = ['All Cities', ...Array.from(new Set(activeBookings.map((booking) => booking.city).filter(Boolean))).sort()]
 
   const filtered = useMemo(() => {
     return activeBookings.filter(b => {
@@ -118,8 +128,9 @@ export default function BookingsPage() {
 
   const kpis = {
     total:     activeBookings.length,
-    pending:   activeBookings.filter(b => b.status === 'pending').length,
+    pending:   activeBookings.filter(b => b.status === 'pending' || !b.teacher).length,
     confirmed: activeBookings.filter(b => b.status === 'confirmed' || b.status === 'in_progress').length,
+    issues:    activeBookings.filter(b => b.issueReported).length,
     revenue:   activeBookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.amount, 0),
   }
 
@@ -182,7 +193,7 @@ export default function BookingsPage() {
             { label: 'Total Bookings', value: kpis.total, delta: '+8 this week', up: true, Icon: CalendarDays, iconBg: 'var(--color-mint)', iconColor: 'var(--color-primary)' },
             { label: 'Pending Assignment', value: kpis.pending, delta: 'Needs teacher confirmation', up: false, Icon: AlertCircle, iconBg: '#FEF3C7', iconColor: '#B45309' },
             { label: 'Confirmed', value: kpis.confirmed, delta: 'Upcoming sessions', up: true, Icon: CheckCircle2, iconBg: '#DCFCE7', iconColor: '#16A34A' },
-            { label: 'Revenue (Completed)', value: `₹${kpis.revenue.toLocaleString('en-IN')}`, delta: '+12% vs last month', up: true, Icon: IndianRupee, iconBg: '#EDE9FE', iconColor: '#7C3AED' },
+            { label: 'Revenue (Completed)', value: `₹${kpis.revenue.toLocaleString('en-IN')}`, delta: `${kpis.issues} bookings need issue follow-up`, up: true, Icon: IndianRupee, iconBg: '#EDE9FE', iconColor: '#7C3AED' },
           ].map(k => (
             <StatCard key={k.label} {...k} />
           ))}
@@ -220,7 +231,7 @@ export default function BookingsPage() {
             <option value="rescheduled">Rescheduled</option>
           </select>
           <select className="filter-bar__select" value={city} onChange={e => { setCity(e.target.value); setPage(1) }}>
-            {CITIES.map(c => <option key={c}>{c}</option>)}
+            {cityOptions.map(c => <option key={c}>{c}</option>)}
           </select>
           <input type="date" className="filter-bar__select" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1) }} title="From date" />
           <input type="date" className="filter-bar__select" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1) }} title="To date" />
@@ -242,12 +253,13 @@ export default function BookingsPage() {
                 <th>City</th>
                 <th>Date & Time</th>
                 <th>Amount</th>
+                <th>Post-session</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {loading && <SkeletonTableRows count={8} cols={10} />}
+              {loading && <SkeletonTableRows count={8} cols={11} />}
               {!loading && paged.map(b => (
                 <tr key={b.id} style={{ background: selected.has(b.id) ? 'var(--color-mint)' : undefined }}>
                   <td>
@@ -272,6 +284,21 @@ export default function BookingsPage() {
                     <div style={{ fontSize: 12, color: 'var(--color-gray)' }}>{b.time}</div>
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--color-primary)' }}>₹{b.amount}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {b.feedbackSubmitted && (
+                        <span className="tag tag--gray">
+                          {b.feedbackRating != null ? `${b.feedbackRating}/5` : 'Feedback'}
+                        </span>
+                      )}
+                      {b.issueReported && (
+                        <span className="tag" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+                          {b.issueResolution ? `${b.issueStatus ?? 'reported'} · ${b.issueResolution}` : (b.issueStatus ?? 'reported')}
+                        </span>
+                      )}
+                      {!b.feedbackSubmitted && !b.issueReported && <span style={{ fontSize: 12, color: 'var(--color-gray)' }}>—</span>}
+                    </div>
+                  </td>
                   <td><span className={BOOKING_STATUS_BADGE[b.status].cls}>{BOOKING_STATUS_BADGE[b.status].label}</span></td>
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -312,7 +339,7 @@ export default function BookingsPage() {
                 </tr>
               ))}
               {!loading && paged.length === 0 && (
-                <tr><td colSpan={10} className="empty-state">No bookings match your filters.</td></tr>
+                <tr><td colSpan={11} className="empty-state">No bookings match your filters.</td></tr>
               )}
             </tbody>
           </table>

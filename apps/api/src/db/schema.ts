@@ -26,6 +26,10 @@ export const paymentGatewayEnum = pgEnum('payment_gateway', ['razorpay', 'upi', 
 export const payoutStatusEnum = pgEnum('payout_status', ['queued', 'dispatched', 'settled', 'failed'])
 export const notificationChannelEnum = pgEnum('notification_channel', ['push', 'whatsapp', 'email', 'in_app'])
 export const discountTypeEnum = pgEnum('discount_type', ['flat', 'percent'])
+export const sessionIssueTypeEnum = pgEnum('session_issue_type', ['no_show', 'venue_issue', 'safety_issue', 'schedule_issue', 'other'])
+export const sessionIssueStatusEnum = pgEnum('session_issue_status', ['reported', 'reviewing', 'resolved'])
+export const sessionIssueResolutionEnum = pgEnum('session_issue_resolution', ['none', 'refund', 'credit', 'support_only'])
+export const sessionIssueDesiredOutcomeEnum = pgEnum('session_issue_desired_outcome', ['refund', 'credit', 'rebooking', 'support'])
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +42,8 @@ export const users = pgTable('users', {
   avatarUrl: text('avatar_url'),
   phone: text('phone'),
   city: text('city'),
+  latitude: real('latitude'),
+  longitude: real('longitude'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
@@ -62,6 +68,7 @@ export const children = pgTable('children', {
   firstName: text('first_name').notNull(),
   lastName: text('last_name'),
   dateOfBirth: date('date_of_birth').notNull(),
+  gender: text('gender'),
   interests: text('interests').array().notNull().default([]),
   notes: text('notes'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -80,6 +87,7 @@ export const teachers = pgTable('teachers', {
   userId: uuid('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
   bio: text('bio'),
   specializations: text('specializations').array().notNull().default([]),
+  languages: text('languages').array().notNull().default(['English']),
   verificationStatus: verificationStatusEnum('verification_status').notNull().default('pending'),
   rating: numeric('rating', { precision: 3, scale: 2 }).notNull().default('0'),
   reviewCount: integer('review_count').notNull().default(0),
@@ -118,6 +126,10 @@ export const activities = pgTable('activities', {
   categoryId: uuid('category_id').notNull().references(() => categories.id),
   ageGroup: text('age_group').notNull(),
   sessionType: sessionTypeEnum('session_type').notNull().default('1:1'),
+  deliveryMode: text('delivery_mode').notNull().default('at_home'),
+  venueType: text('venue_type').notNull().default('at_home'),
+  activityFormat: text('activity_format').notNull().default('one_time'),
+  trialAvailable: boolean('trial_available').notNull().default(false),
   minChildren: integer('min_children').notNull().default(1),
   maxChildren: integer('max_children').notNull().default(1),
   sessionDurationMins: integer('session_duration_mins').notNull().default(60),
@@ -126,6 +138,14 @@ export const activities = pgTable('activities', {
   tags: text('tags').array().notNull().default([]),
   materialsNeeded: text('materials_needed'),
   preparationNotes: text('preparation_notes'),
+  locality: text('locality'),
+  city: text('city'),
+  parentValue: text('parent_value'),
+  sessionFlow: text('session_flow'),
+  parentWaitingPolicy: text('parent_waiting_policy'),
+  accessibilityNotes: text('accessibility_notes'),
+  whatToBring: text('what_to_bring'),
+  cancellationPolicy: text('cancellation_policy'),
   latitude: real('latitude'),
   longitude: real('longitude'),
   status: activityStatusEnum('status').notNull().default('draft'),
@@ -197,6 +217,7 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
   slot: one(slots, { fields: [bookings.slotId], references: [slots.id] }),
   payment: one(payments),
   review: one(reviews),
+  sessionIssues: many(sessionIssues),
 }))
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
@@ -259,6 +280,35 @@ export const reviewsRelations = relations(reviews, ({ one }) => ({
   parent: one(users, { fields: [reviews.parentId], references: [users.id], relationName: 'parentReviews' }),
   teacher: one(users, { fields: [reviews.teacherId], references: [users.id], relationName: 'teacherReviews' }),
   activity: one(activities, { fields: [reviews.activityId], references: [activities.id] }),
+}))
+
+// ─── Session Issues ──────────────────────────────────────────────────────────
+
+export const sessionIssues = pgTable('session_issues', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  bookingId: uuid('booking_id').notNull().references(() => bookings.id, { onDelete: 'cascade' }),
+  parentId: uuid('parent_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  teacherId: uuid('teacher_id').references(() => users.id),
+  caseReference: text('case_reference').notNull().unique(),
+  issueType: sessionIssueTypeEnum('issue_type').notNull(),
+  description: text('description'),
+  status: sessionIssueStatusEnum('status').notNull().default('reported'),
+  resolution: sessionIssueResolutionEnum('resolution').notNull().default('none'),
+  desiredOutcome: sessionIssueDesiredOutcomeEnum('desired_outcome').notNull().default('support'),
+  nextAction: text('next_action'),
+  slaTargetAt: timestamp('sla_target_at'),
+  attachmentUrls: text('attachment_urls').array().notNull().default([]),
+  intakeAnswers: jsonb('intake_answers').notNull().default([]),
+  reportedAt: timestamp('reported_at').notNull().defaultNow(),
+  resolvedAt: timestamp('resolved_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const sessionIssuesRelations = relations(sessionIssues, ({ one }) => ({
+  booking: one(bookings, { fields: [sessionIssues.bookingId], references: [bookings.id] }),
+  parent: one(users, { fields: [sessionIssues.parentId], references: [users.id] }),
+  teacher: one(users, { fields: [sessionIssues.teacherId], references: [users.id] }),
 }))
 
 // ─── Discount Codes ───────────────────────────────────────────────────────────

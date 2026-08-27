@@ -18,12 +18,19 @@ export type User = z.infer<typeof UserSchema>
 export const ParentSchema = UserSchema.extend({
   role: z.literal('parent'),
   phone: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
 })
 export type Parent = z.infer<typeof ParentSchema>
 
 export const TeacherSchema = UserSchema.extend({
   role: z.literal('teacher'),
   bio: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  specializations: z.array(z.string()).default([]),
+  languages: z.array(z.string()).default([]),
+  verificationStatus: z.enum(['pending', 'verified', 'rejected']).default('pending'),
   rating: z.number().min(0).max(5).default(0),
   reviewCount: z.number().int().min(0).default(0),
 })
@@ -35,6 +42,7 @@ export const ChildSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1).nullable().optional(),
   dateOfBirth: z.string().date(),
+  gender: z.string().nullable().optional(),
   interests: z.array(z.string()).default([]),
   notes: z.string().nullable().optional(),
   createdAt: z.date(),
@@ -48,6 +56,9 @@ export const CreateUserInputSchema = z.object({
   lastName: z.string().min(1),
   role: UserRoleSchema,
   phone: z.string().optional(),
+  city: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
 })
 export type CreateUserInput = z.infer<typeof CreateUserInputSchema>
 
@@ -57,8 +68,33 @@ export const RegisterParentInputSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   phone: z.string().optional(),
+  city: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
 })
 export type RegisterParentInput = z.infer<typeof RegisterParentInputSchema>
+
+export const CreateChildInputSchema = z.object({
+  parentId: z.string().uuid(),
+  firstName: z.string().min(1),
+  lastName: z.string().optional(),
+  dateOfBirth: z.string().date(),
+  gender: z.string().optional(),
+  interests: z.array(z.string()).default([]),
+  notes: z.string().optional(),
+})
+export type CreateChildInput = z.infer<typeof CreateChildInputSchema>
+
+export const UpdateChildInputSchema = z.object({
+  parentId: z.string().uuid(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  dateOfBirth: z.string().date().optional(),
+  gender: z.string().optional(),
+  interests: z.array(z.string()).optional(),
+  notes: z.string().optional(),
+})
+export type UpdateChildInput = z.infer<typeof UpdateChildInputSchema>
 
 export const UserFiltersSchema = z.object({
   role: UserRoleSchema.optional(),

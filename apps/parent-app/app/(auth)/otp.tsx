@@ -24,7 +24,7 @@ const RESEND_TIMER = 30
 
 export default function OTPScreen() {
   const insets = useSafeAreaInsets()
-  const { phone } = useLocalSearchParams<{ phone: string }>()
+  const { phone, redirectTo } = useLocalSearchParams<{ phone: string; redirectTo?: string }>()
   const { setMockSession } = useAuth()
 
   if (!phone) return <Redirect href="/(auth)/login" />
@@ -96,11 +96,21 @@ export default function OTPScreen() {
       const { data: { user: freshUser } } = await supabase.auth.getUser()
       const onboardingStep = freshUser?.user_metadata?.onboardingStep
       if (!onboardingStep || onboardingStep === '') {
-        router.replace('/(auth)/parent-setup')
+        router.replace({
+          pathname: '/(auth)/parent-setup',
+          params: redirectTo ? { redirectTo } : undefined,
+        })
       } else if (onboardingStep === 'parent-done') {
-        router.replace('/(auth)/child-setup')
+        router.replace({
+          pathname: '/(auth)/child-setup',
+          params: redirectTo ? { redirectTo } : undefined,
+        })
       } else {
-        router.replace('/(root)/')
+        if (typeof redirectTo === 'string' && redirectTo.length > 0) {
+          router.replace(redirectTo as any)
+        } else {
+          router.replace('/(root)/')
+        }
       }
     } finally {
       setLoading(false)

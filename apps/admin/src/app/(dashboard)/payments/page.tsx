@@ -24,6 +24,7 @@ interface Payment {
   amount: number
   gateway: string
   status: PaymentStatus
+  bookingStatus?: string
   date: string
   refundAmount?: number
 }
@@ -76,27 +77,71 @@ export default function PaymentsPage() {
   const [livePayouts, setLivePayouts]     = useState<Payout[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [apiUnavailable, setApiUnavailable] = useState(false)
+  const [actionKey, setActionKey] = useState<string | null>(null)
+
+  async function runPaymentAction(key: string, action: () => Promise<void>) {
+    if (USE_MOCK_DATA) return
+    setActionKey(key)
+    try {
+      await action()
+      const res = await adminApi.payments.list({
+        status: status === 'all' ? undefined : status,
+        search: tab === 'ledger' ? search || undefined : undefined,
+        page,
+      })
+      setLivePayments(res.payments.map((p: any) => ({
+        id: p.id,
+        bookingId: p.bookingId ?? p.booking_id ?? '',
+        parentName: [p.parentFirstName ?? p.parent_first_name, p.parentLastName ?? p.parent_last_name].filter(Boolean).join(' ').trim(),
+        activity: p.activityTitle ?? p.activity_title ?? '',
+        amount: Number(p.amount ?? 0),
+        gateway: p.gateway ?? '',
+        status: p.status as PaymentStatus,
+        bookingStatus: p.bookingStatus ?? p.booking_status ?? undefined,
+        date: (p.createdAt ?? p.created_at ?? '').split('T')[0],
+        refundAmount: p.status === 'refunded' ? Number(p.amount ?? 0) : undefined,
+      })))
+      setLivePayouts(res.payouts.map((p: any) => ({
+        id: p.id,
+        teacherName: [p.teacherFirstName ?? p.teacher_first_name, p.teacherLastName ?? p.teacher_last_name].filter(Boolean).join(' ').trim(),
+        bankAccount: p.bankAccount ?? p.bank_account ?? '',
+        amount: Number(p.amount ?? 0),
+        sessionsCount: Number(p.sessionCount ?? p.session_count ?? 0),
+        status: p.status as PayoutStatus,
+        scheduledDate: (p.scheduledAt ?? p.scheduled_at ?? '').split('T')[0],
+        settledDate: p.settledAt ? (p.settledAt).split('T')[0] : undefined,
+      })))
+    } finally {
+      setActionKey(null)
+    }
+  }
 
   useEffect(() => {
     if (USE_MOCK_DATA) { setLoading(false); return }
     setLoading(true)
     void (async () => {
       try {
-        const res = await adminApi.payments.list({ status: status === 'all' ? undefined : status, page })
+        const paymentSearch = tab === 'ledger' ? search : undefined
+        const res = await adminApi.payments.list({
+          status: status === 'all' ? undefined : status,
+          search: paymentSearch || undefined,
+          page,
+        })
         setLivePayments(res.payments.map((p: any) => ({
           id: p.id,
           bookingId: p.bookingId ?? p.booking_id ?? '',
-          parentName: p.parentName ?? p.parent_name ?? '',
+          parentName: [p.parentFirstName ?? p.parent_first_name, p.parentLastName ?? p.parent_last_name].filter(Boolean).join(' ').trim(),
           activity: p.activityTitle ?? p.activity_title ?? '',
           amount: Number(p.amount ?? 0),
           gateway: p.gateway ?? '',
           status: p.status as PaymentStatus,
+          bookingStatus: p.bookingStatus ?? p.booking_status ?? undefined,
           date: (p.createdAt ?? p.created_at ?? '').split('T')[0],
-          refundAmount: p.refundAmount ? Number(p.refundAmount) : undefined,
+          refundAmount: p.status === 'refunded' ? Number(p.amount ?? 0) : undefined,
         })))
         setLivePayouts(res.payouts.map((p: any) => ({
           id: p.id,
-          teacherName: p.teacherName ?? p.teacher_name ?? '',
+          teacherName: [p.teacherFirstName ?? p.teacher_first_name, p.teacherLastName ?? p.teacher_last_name].filter(Boolean).join(' ').trim(),
           bankAccount: p.bankAccount ?? p.bank_account ?? '',
           amount: Number(p.amount ?? 0),
           sessionsCount: Number(p.sessionCount ?? p.session_count ?? 0),
@@ -110,14 +155,19 @@ export default function PaymentsPage() {
       }
       finally { setLoading(false) }
     })()
-  }, [USE_MOCK_DATA, status, page])
+  }, [USE_MOCK_DATA, page, search, status, tab])
 
   const activePayments = USE_MOCK_DATA ? MOCK_PAYMENTS : (livePayments ?? MOCK_PAYMENTS)
   const activePayouts  = USE_MOCK_DATA ? MOCK_PAYOUTS  : (livePayouts  ?? MOCK_PAYOUTS)
 
   const filteredPayments = useMemo(() => {
     return activePayments.filter(p => {
-      const matchSearch = !search || p.parentName.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase())
+      const q = search.toLowerCase()
+      const matchSearch = !search
+        || p.parentName.toLowerCase().includes(q)
+        || p.id.toLowerCase().includes(q)
+        || p.bookingId.toLowerCase().includes(q)
+        || p.activity.toLowerCase().includes(q)
       const matchStatus = status === 'all' || p.status === status
       return matchSearch && matchStatus
     })
@@ -184,7 +234,7 @@ export default function PaymentsPage() {
         <div className="filter-bar">
           <input
             className="filter-bar__search"
-            placeholder={tab === 'ledger' ? 'Search by payment ID or parent…' : 'Search teacher name…'}
+            placeholder={tab === 'ledger' ? 'Search payment, booking, parent, or activity…' : 'Search teacher name…'}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1) }}
           />
@@ -232,21 +282,41 @@ export default function PaymentsPage() {
                   <tr key={p.id}>
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--color-primary)' }}>{p.id}</td>
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-gray)' }}>{p.bookingId}</td>
-                    <td style={{ fontWeight: 600, fontSize: 14 }}>{p.parentName}</td>
+                    <td style={{ fontWeight: 600, fontSize: 14 }}>{p.parentName || '—'}</td>
                     <td style={{ fontSize: 13 }}>{p.activity}</td>
                     <td>
                       <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--color-primary)' }}>₹{p.amount}</span>
                       {p.refundAmount && <div style={{ fontSize: 11, color: 'var(--color-coral)' }}>Refund: ₹{p.refundAmount}</div>}
                     </td>
                     <td><span className="tag tag--gray">{p.gateway}</span></td>
-                    <td style={{ fontSize: 13, color: 'var(--color-gray)' }}>{p.date}</td>
+                    <td style={{ fontSize: 13, color: 'var(--color-gray)' }}>
+                      {p.date}
+                      {p.bookingStatus ? <div style={{ fontSize: 11 }}>Booking: {p.bookingStatus.replace('_', ' ')}</div> : null}
+                    </td>
                     <td><span className={PAYMENT_STATUS_BADGE[p.status].cls}>{PAYMENT_STATUS_BADGE[p.status].label}</span></td>
                     <td>
                       {p.status === 'success' && (
-                        <button className="btn btn--ghost btn--sm" style={{ color: 'var(--color-coral)' }} onClick={() => alert('Refund coming soon.')}>Refund</button>
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          style={{ color: 'var(--color-coral)' }}
+                          disabled={USE_MOCK_DATA || actionKey === `refund-${p.bookingId}`}
+                          onClick={() => void runPaymentAction(`refund-${p.bookingId}`, async () => {
+                            await adminApi.payments.refund(p.bookingId)
+                          })}
+                        >
+                          {actionKey === `refund-${p.bookingId}` ? 'Refunding…' : 'Refund'}
+                        </button>
                       )}
                       {p.status === 'failed' && (
-                        <button className="btn btn--ghost btn--sm" onClick={() => alert('Retry coming soon.')}>Retry</button>
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          disabled={USE_MOCK_DATA || actionKey === `retry-${p.bookingId}`}
+                          onClick={() => void runPaymentAction(`retry-${p.bookingId}`, async () => {
+                            await adminApi.payments.retry(p.bookingId)
+                          })}
+                        >
+                          {actionKey === `retry-${p.bookingId}` ? 'Retrying…' : 'Retry'}
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -289,10 +359,40 @@ export default function PaymentsPage() {
                     <td><span className={PAYOUT_STATUS_BADGE[p.status].cls}>{PAYOUT_STATUS_BADGE[p.status].label}</span></td>
                     <td>
                       {p.status === 'queued' && (
-                        <button className="btn btn--sm" style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }} onClick={() => alert('Payout dispatch coming soon.')}>Dispatch</button>
+                        <button
+                          className="btn btn--sm"
+                          style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}
+                          disabled={USE_MOCK_DATA || actionKey === `dispatch-${p.id}`}
+                          onClick={() => void runPaymentAction(`dispatch-${p.id}`, async () => {
+                            await adminApi.payments.updatePayout(p.id, { action: 'dispatch' })
+                          })}
+                        >
+                          {actionKey === `dispatch-${p.id}` ? 'Dispatching…' : 'Dispatch'}
+                        </button>
+                      )}
+                      {p.status === 'dispatched' && (
+                        <button
+                          className="btn btn--sm"
+                          style={{ background: '#166534', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}
+                          disabled={USE_MOCK_DATA || actionKey === `settle-${p.id}`}
+                          onClick={() => void runPaymentAction(`settle-${p.id}`, async () => {
+                            await adminApi.payments.updatePayout(p.id, { action: 'settle' })
+                          })}
+                        >
+                          {actionKey === `settle-${p.id}` ? 'Settling…' : 'Settle'}
+                        </button>
                       )}
                       {p.status === 'failed' && (
-                        <button className="btn btn--ghost btn--sm" style={{ color: 'var(--color-coral)' }} onClick={() => alert('Retry coming soon.')}>Retry</button>
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          style={{ color: 'var(--color-coral)' }}
+                          disabled={USE_MOCK_DATA || actionKey === `payout-retry-${p.id}`}
+                          onClick={() => void runPaymentAction(`payout-retry-${p.id}`, async () => {
+                            await adminApi.payments.updatePayout(p.id, { action: 'retry' })
+                          })}
+                        >
+                          {actionKey === `payout-retry-${p.id}` ? 'Retrying…' : 'Retry'}
+                        </button>
                       )}
                     </td>
                   </tr>

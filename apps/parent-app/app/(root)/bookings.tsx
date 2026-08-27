@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, RefreshControl } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -7,12 +7,15 @@ import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import { useBookings } from '@/hooks/useBookings'
 import { usePullToRefresh } from '@/hooks/usePullToRefresh'
+import { useAuth } from '@/lib/AuthContext'
+import { useLateOnboarding } from '@/lib/LateOnboardingContext'
 import { BookingCard, isLiveBooking } from '@/components/bookings/BookingCard'
 import { Avatar } from '@/components/Avatar'
+import { LoginRequiredState } from '@/components/LoginRequiredState'
 import type { Booking as ApiBooking } from '@/lib/api'
 
-type Tab = 'Upcoming' | 'Completed' | 'Cancelled'
-const TABS: Tab[] = ['Upcoming', 'Completed', 'Cancelled']
+type Tab = 'Today' | 'Upcoming' | 'Completed' | 'Cancelled'
+const TABS: Tab[] = ['Today', 'Upcoming', 'Completed', 'Cancelled']
 
 function EmptyBookings({ tab }: { tab: Tab }) {
   return (
@@ -20,7 +23,9 @@ function EmptyBookings({ tab }: { tab: Tab }) {
       <Ionicons name="calendar-outline" size={48} color={colors.border} />
       <Text style={styles.emptyTitle}>No {tab.toLowerCase()} bookings</Text>
       <Text style={styles.emptySubtitle}>
-        {tab === 'Upcoming'
+        {tab === 'Today'
+          ? 'Sessions happening today will appear here.'
+          : tab === 'Upcoming'
           ? 'Book a session to get started!'
           : tab === 'Completed'
           ? 'Completed sessions will appear here.'
@@ -65,7 +70,24 @@ function TeacherTrackingBanner({ booking }: { booking: ApiBooking }) {
 
 export default function BookingsScreen() {
   const insets = useSafeAreaInsets()
-  const [activeTab, setActiveTab] = useState<Tab>('Upcoming')
+  const { session } = useAuth()
+  const { enabled } = useLateOnboarding()
+  const [activeTab, setActiveTab] = useState<Tab>('Today')
+
+  if (!session && enabled) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <Text style={styles.title}>My Bookings</Text>
+        </View>
+        <LoginRequiredState
+          title="Login when you're ready to book"
+          subtitle="You can explore first. We only need login once you want to view or manage bookings."
+          redirectTo="/(root)/bookings"
+        />
+      </View>
+    )
+  }
 
   const {
     data: upcomingData,
@@ -93,13 +115,40 @@ export default function BookingsScreen() {
   const upcomingItems: ApiBooking[] = upcomingData?.items ?? []
   const completedItems: ApiBooking[] = completedData?.items ?? []
   const cancelledItems: ApiBooking[] = cancelledData?.items ?? []
+  const todayKey = new Date().toDateString()
+
+  const todayItems = useMemo(
+    () =>
+      upcomingItems.filter((booking) => {
+        if (!booking.scheduledAt) {
+          return false
+        }
+
+        return new Date(booking.scheduledAt).toDateString() === todayKey
+      }),
+    [todayKey, upcomingItems],
+  )
+
+  const futureUpcomingItems = useMemo(
+    () =>
+      upcomingItems.filter((booking) => {
+        if (!booking.scheduledAt) {
+          return true
+        }
+
+        return new Date(booking.scheduledAt).toDateString() !== todayKey
+      }),
+    [todayKey, upcomingItems],
+  )
 
   const activeItems =
-    activeTab === 'Upcoming' ? upcomingItems :
+    activeTab === 'Today' ? todayItems :
+    activeTab === 'Upcoming' ? futureUpcomingItems :
     activeTab === 'Completed' ? completedItems :
     cancelledItems
 
   const isLoading =
+    activeTab === 'Today' ? loadingUpcoming :
     activeTab === 'Upcoming' ? loadingUpcoming :
     activeTab === 'Completed' ? loadingCompleted :
     loadingCancelled
@@ -111,6 +160,7 @@ export default function BookingsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>My Bookings</Text>
+        <Text style={styles.subtitle}>Upcoming, today, completed, and rescheduled sessions</Text>
       </View>
 
       {/* Tabs */}
@@ -118,7 +168,8 @@ export default function BookingsScreen() {
         {TABS.map(tab => {
           const active = activeTab === tab
           const count =
-            tab === 'Upcoming' ? upcomingItems.length :
+            tab === 'Today' ? todayItems.length :
+            tab === 'Upcoming' ? futureUpcomingItems.length :
             tab === 'Completed' ? completedItems.length :
             cancelledItems.length
           return (
@@ -151,8 +202,23 @@ export default function BookingsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryPill}>
+            <Ionicons name="today-outline" size={14} color={colors.primary} />
+            <Text style={styles.summaryPillText}>{todayItems.length} today</Text>
+          </View>
+          <View style={styles.summaryPill}>
+            <Ionicons name="calendar-outline" size={14} color={colors.primary} />
+            <Text style={styles.summaryPillText}>{futureUpcomingItems.length} upcoming</Text>
+          </View>
+          <View style={styles.summaryPill}>
+            <Ionicons name="checkmark-done-outline" size={14} color={colors.primary} />
+            <Text style={styles.summaryPillText}>{completedItems.length} completed</Text>
+          </View>
+        </View>
+
         {/* Teacher tracking banner — shown when a session is live */}
-        {activeTab === 'Upcoming' && liveBooking && (
+        {(activeTab === 'Today' || activeTab === 'Upcoming') && liveBooking && (
           <TeacherTrackingBanner booking={liveBooking} />
         )}
 
@@ -182,6 +248,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   title: { fontSize: fontSize.h1, fontFamily: 'Nunito-Bold', color: colors.navy },
+  subtitle: {
+    marginTop: spacing.xs,
+    fontSize: fontSize.caption,
+    fontFamily: 'Nunito-Regular',
+    color: colors.gray,
+  },
 
   tabBar: {
     flexDirection: 'row',
@@ -211,6 +283,29 @@ const styles = StyleSheet.create({
   badgeTextActive: { color: colors.white },
 
   scroll: { padding: spacing.md, gap: spacing.md },
+  summaryCard: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    backgroundColor: colors.white,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    ...shadows.card,
+  },
+  summaryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.mint,
+    borderRadius: radius.avatar,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs + 2,
+  },
+  summaryPillText: {
+    fontSize: fontSize.caption,
+    fontFamily: 'Nunito-SemiBold',
+    color: colors.primary,
+  },
 
   // Teacher tracking banner
   trackingBanner: {

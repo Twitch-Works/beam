@@ -8,6 +8,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from '@/lib/AuthContext'
+import { LateOnboardingProvider } from '@/lib/LateOnboardingContext'
+import { SavedActivitiesProvider } from '@/lib/SavedActivitiesContext'
 
 SplashScreen.preventAutoHideAsync()
 
@@ -37,12 +39,16 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <StatusBar style="auto" />
-            <Stack screenOptions={{ headerShown: false }} />
-          </AuthProvider>
-        </QueryClientProvider>
+        <LateOnboardingProvider>
+          <SavedActivitiesProvider>
+            <QueryClientProvider client={queryClient}>
+              <AuthProvider>
+                <StatusBar style="auto" />
+                <Stack screenOptions={{ headerShown: false }} />
+              </AuthProvider>
+            </QueryClientProvider>
+          </SavedActivitiesProvider>
+        </LateOnboardingProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )

@@ -111,6 +111,8 @@ export async function parentRoutes(fastify: FastifyInstance) {
       lastName: user.lastName,
       phone: user.phone,
       city: user.city,
+      latitude: user.latitude,
+      longitude: user.longitude,
       role: user.role,
     })
   })
@@ -118,7 +120,26 @@ export async function parentRoutes(fastify: FastifyInstance) {
   // ── POST /users/register-parent ────────────────────────────────────────────
   // Create parent row in public.users after Supabase auth signup
   fastify.post('/users/register-parent', async (req, reply) => {
-    const { userId, email, firstName, lastName, phone } = beamSchemas.RegisterParentInputSchema.parse(req.body)
+    beamSchemas.RegisterParentInputSchema.parse(req.body)
+    const {
+      userId,
+      email,
+      firstName,
+      lastName,
+      phone,
+      city,
+      latitude,
+      longitude,
+    } = req.body as {
+      userId?: string
+      email: string
+      firstName: string
+      lastName: string
+      phone?: string
+      city?: string
+      latitude?: number
+      longitude?: number
+    }
     const resolvedUserId = userId ?? randomUUID()
 
     const [existingById, existingByEmail] = await Promise.all([
@@ -137,6 +158,9 @@ export async function parentRoutes(fastify: FastifyInstance) {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       phone: phone?.trim() || null,
+      city: city?.trim() || null,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null,
     }).returning({ id: schema.users.id })
 
     return reply.status(201).send({ id: user.id })
@@ -239,9 +263,9 @@ export async function parentRoutes(fastify: FastifyInstance) {
   // ── PATCH /users/profile ───────────────────────────────────────────────────
   // Parent profile update (name, city, phone)
   fastify.patch<{
-    Body: { userId: string; firstName?: string; lastName?: string; city?: string; phone?: string }
+    Body: { userId: string; firstName?: string; lastName?: string; city?: string; phone?: string; latitude?: number; longitude?: number }
   }>('/users/profile', async (req, reply) => {
-    const { userId, firstName, lastName, city, phone } = req.body
+    const { userId, firstName, lastName, city, phone, latitude, longitude } = req.body
     if (!userId) return reply.status(400).send({ error: 'userId is required' })
 
     const update: Record<string, any> = { updatedAt: new Date() }
@@ -249,6 +273,8 @@ export async function parentRoutes(fastify: FastifyInstance) {
     if (lastName  !== undefined) update.lastName  = lastName.trim()
     if (city      !== undefined) update.city      = city.trim()
     if (phone     !== undefined) update.phone     = phone.trim()
+    if (latitude  !== undefined) update.latitude  = latitude
+    if (longitude !== undefined) update.longitude = longitude
 
     if (Object.keys(update).length <= 1) return reply.send({ ok: true })
 

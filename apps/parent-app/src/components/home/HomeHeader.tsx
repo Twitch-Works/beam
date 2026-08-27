@@ -27,7 +27,7 @@ export const HomeHeader = React.memo(function HomeHeader({
           <Text style={styles.firstName}>{firstName}</Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.avatarBtn} onPress={() => router.push('/(root)/kids')}>
+          <TouchableOpacity style={styles.avatarBtn} onPress={() => router.push('/(root)/profile')}>
             <Text style={styles.avatarBtnText}>{firstName[0]?.toUpperCase() ?? 'U'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.notifBtn}>

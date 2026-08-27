@@ -10,10 +10,13 @@ import { useChildren } from '@/hooks/useChildren'
 import { useActivities } from '@/hooks/useActivities'
 import { useChildProgress } from '@/hooks/useChildProgress'
 import { usePullToRefresh } from '@/hooks/usePullToRefresh'
+import { useAuth } from '@/lib/AuthContext'
+import { useLateOnboarding } from '@/lib/LateOnboardingContext'
 import { EmptyState } from '@/components/EmptyState'
 import { Skeleton } from '@/components/Skeleton'
 import { Avatar } from '@/components/Avatar'
 import { ChildSelector } from '@/components/kids/ChildSelector'
+import { LoginRequiredState } from '@/components/LoginRequiredState'
 import type { Child } from '@/lib/api'
 
 const LEVELS = ['Level 1 Starter', 'Level 2 Learner', 'Level 3 Achiever', 'Level 4 Explorer', 'Level 5 Champion']
@@ -27,6 +30,8 @@ function skillLabel(score: number): string {
 
 export default function KidsScreen() {
   const insets = useSafeAreaInsets()
+  const { session } = useAuth()
+  const { enabled } = useLateOnboarding()
   const { data, isLoading, refetch: refetchChildren } = useChildren()
   const children: Child[] = data?.items ?? []
   const { data: activitiesData, refetch: refetchActivities } = useActivities({ limit: 4 })
@@ -61,6 +66,24 @@ export default function KidsScreen() {
 
   const badges = progress?.badges ?? []
   const teacherNote = progress?.teacherNote ?? null
+
+  if (!session && enabled) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerTitle}>Kids Dashboard</Text>
+            <Text style={styles.headerSubtitle}>Track growth & milestones</Text>
+          </View>
+        </View>
+        <LoginRequiredState
+          title="Login to create the full child profile"
+          subtitle="Age band and interests are enough for recommendations. We’ll collect the full child profile only when needed."
+          redirectTo="/(root)/kids"
+        />
+      </View>
+    )
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

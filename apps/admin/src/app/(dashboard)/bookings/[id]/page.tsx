@@ -10,6 +10,7 @@ import { BOOKING_STATUS_BADGE, PAYMENT_STATUS_BADGE, PAYOUT_STATUS_BADGE } from 
 
 type BookingDetail = {
   id: string
+  rawId: string
   status: 'confirmed' | 'completed' | 'cancelled' | 'rescheduled' | 'pending' | 'in_progress'
   dateTime: string
   sessionType: '1:1' | 'group'
@@ -22,11 +23,14 @@ type BookingDetail = {
   parent:  { name: string; phone: string; email: string }
   teacher: { name: string; phone: string; rating: number; specialties: string[]; assigned: boolean }
   activity: { title: string; category: string; duration: string; price: number }
+  feedback: { id: string | null; submitted: boolean; rating: number | null; comment: string | null; flagged: boolean }
+  issue: { id: string | null; reported: boolean; type: string | null; status: string | null; resolution: string | null; description: string | null }
   timeline: { label: string; time: string; done: boolean; note?: string }[]
 }
 
 const mockBooking: BookingDetail = {
   id: 'BK-12589',
+  rawId: 'BK-12589',
   status: 'confirmed',
   dateTime: '16 May 2026, 4:00 PM',
   sessionType: '1:1',
@@ -39,6 +43,8 @@ const mockBooking: BookingDetail = {
   parent:  { name: 'Rahul Mehta',      phone: '+91 98765 10001', email: 'rahul.mehta@gmail.com' },
   teacher: { name: 'Ms. Priya Sharma', phone: '+91 98765 43210', rating: 4.9, specialties: ['Messy Play', 'Art & Craft'], assigned: true },
   activity: { title: 'Messy Play Session', category: 'Messy Play', duration: '60 min', price: 649 },
+  feedback: { id: null, submitted: false, rating: null, comment: null, flagged: false },
+  issue: { id: null, reported: false, type: null, status: null, resolution: null, description: null },
   timeline: [
     { label: 'Booking Created',   time: '10 May 2026, 9:14 AM',  done: true,  note: 'Parent booked via web app' },
     { label: 'Mock Payment Captured',  time: '10 May 2026, 9:15 AM',  done: true,  note: 'Mock payment recorded successfully' },
@@ -60,6 +66,8 @@ function buildTimeline(b: any): BookingDetail['timeline'] {
     { label: 'Teacher Confirmed', time: fmt(b.confirmedAt), done: !!b.confirmedAt, note: b.teacher ? `${b.teacher.firstName} ${b.teacher.lastName ?? ''}`.trim() + ' accepted the booking' : undefined },
     { label: 'Class OTP Verified', time: fmt(b.teacherOtpVerifiedAt), done: !!b.teacherOtpVerifiedAt, note: b.teacherOtpVerifiedAt ? 'Teacher arrival verified by parent OTP match' : undefined },
     { label: 'Parent Completed Class', time: fmt(b.parentCompletedAt ?? b.completedAt), done: !!(b.parentCompletedAt ?? b.completedAt), note: !!(b.parentCompletedAt ?? b.completedAt) ? 'Class marked complete from parent side' : undefined },
+    { label: 'Feedback Received', time: fmt(b.review?.createdAt), done: !!b.review, note: b.review ? `${b.review.rating}/5${b.review.comment ? ` · ${b.review.comment}` : ''}` : undefined },
+    { label: 'Issue Reported', time: fmt(b.latestIssue?.reportedAt), done: !!b.latestIssue, note: b.latestIssue ? `${b.latestIssue.issueType}${b.latestIssue.resolution ? ` · ${b.latestIssue.resolution}` : ''}` : undefined },
     { label: 'Teacher Payout Released', time: fmt(b.payoutReleasedAt ?? b.payout?.settledAt), done: !!(b.payoutReleasedAt ?? b.payout?.settledAt), note: b.payout ? `Payout ${b.payout.status}` : undefined },
   ]
   return steps
@@ -76,65 +84,102 @@ export default function BookingDetailPage() {
   const [reassignTeacherId, setReassignTeacherId] = useState('')
   const [liveBooking, setLiveBooking] = useState<BookingDetail | null>(null)
   const [loading, setLoading] = useState(false)
+  const [reviewEscalationOpen, setReviewEscalationOpen] = useState(false)
+  const [reviewEscalationNote, setReviewEscalationNote] = useState('')
+  const [reviewEscalationResolution, setReviewEscalationResolution] = useState<'none' | 'support_only' | 'credit' | 'refund'>('support_only')
+  const [issueDraftStatus, setIssueDraftStatus] = useState<'reported' | 'reviewing' | 'resolved'>('reviewing')
+  const [issueDraftResolution, setIssueDraftResolution] = useState<'none' | 'support_only' | 'credit' | 'refund'>('support_only')
+  const [issueDraftDescription, setIssueDraftDescription] = useState('')
 
-  useEffect(() => {
-    if (USE_MOCK_DATA) { setLoading(false); return }
+  async function loadBookingDetail() {
+    if (USE_MOCK_DATA) {
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     const id = params.id as string
-    void (async () => {
-      try {
-        const b = await adminApi.bookings.get(id)
-        const teacherProfile = b.teacher?.teacher ?? null
+    try {
+      const b = await adminApi.bookings.get(id)
+      const teacherProfile = b.teacher?.teacher ?? null
 
-        const childDob = b.child?.dateOfBirth ? new Date(b.child.dateOfBirth) : null
-        const childAge = childDob ? Math.floor((Date.now() - childDob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : 0
-        const childName = `${b.child?.firstName ?? ''} ${b.child?.lastName ?? ''}`.trim() || '—'
+      const childDob = b.child?.dateOfBirth ? new Date(b.child.dateOfBirth) : null
+      const childAge = childDob ? Math.floor((Date.now() - childDob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : 0
+      const childName = `${b.child?.firstName ?? ''} ${b.child?.lastName ?? ''}`.trim() || '—'
 
-        const sessionDate = b.slot?.startTime
-          ? new Date(b.slot.startTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-          : b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+      const sessionDate = b.slot?.startTime
+        ? new Date(b.slot.startTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
-        const durationMins = b.activity?.sessionDurationMins
-        const duration = durationMins ? `${durationMins} min` : '—'
+      const durationMins = b.activity?.sessionDurationMins
+      const duration = durationMins ? `${durationMins} min` : '—'
 
-        setLiveBooking({
-          id: (b.id as string).slice(0, 8).toUpperCase(),
-          status: (b.status ?? 'pending') as BookingDetail['status'],
-          dateTime: sessionDate,
-          sessionType: b.sessionType === 'group' ? 'group' : '1:1',
-          amount: Number(b.payment?.amount ?? b.totalAmount ?? 0),
-          paymentReference: b.payment?.gatewayPaymentId ?? b.payment?.razorpayId ?? '—',
-          paymentStatus: (b.payment?.status ?? 'pending') as BookingDetail['paymentStatus'],
-          payoutStatus: (b.payout?.status ?? null) as BookingDetail['payoutStatus'],
-          payoutAmount: b.payout?.amount ? Number(b.payout.amount) : null,
-          child: {
-            name: childName,
-            age: childAge,
-            initials: childName.split(' ').map((w: string) => w[0]).join('').slice(0, 2),
-          },
-          parent: {
-            name: `${b.parent?.firstName ?? ''} ${b.parent?.lastName ?? ''}`.trim() || '—',
-            phone: b.parent?.phone ?? '—',
-            email: b.parent?.email ?? '—',
-          },
-          teacher: {
-            name: b.teacher ? `${b.teacher.firstName ?? ''} ${b.teacher.lastName ?? ''}`.trim() : 'Unassigned',
-            phone: b.teacher?.phone ?? '—',
-            rating: Number(teacherProfile?.rating ?? 0),
-            specialties: teacherProfile?.specializations ?? [],
-            assigned: !!b.teacher,
-          },
-          activity: {
-            title: b.activity?.title ?? '—',
-            category: b.activity?.categoryName ?? b.activity?.category?.name ?? '—',
-            duration,
-            price: Number(b.activity?.pricePerSession ?? b.payment?.amount ?? 0),
-          },
-          timeline: buildTimeline(b),
-        })
-      } catch { /* fall back to mock */ }
-      finally { setLoading(false) }
-    })()
+      setLiveBooking({
+        id: (b.id as string).slice(0, 8).toUpperCase(),
+        rawId: b.id as string,
+        status: (b.status ?? 'pending') as BookingDetail['status'],
+        dateTime: sessionDate,
+        sessionType: b.sessionType === 'group' ? 'group' : '1:1',
+        amount: Number(b.payment?.amount ?? b.totalAmount ?? 0),
+        paymentReference: b.payment?.gatewayPaymentId ?? b.payment?.razorpayId ?? '—',
+        paymentStatus: (b.payment?.status ?? 'pending') as BookingDetail['paymentStatus'],
+        payoutStatus: (b.payout?.status ?? null) as BookingDetail['payoutStatus'],
+        payoutAmount: b.payout?.amount ? Number(b.payout.amount) : null,
+        child: {
+          name: childName,
+          age: childAge,
+          initials: childName.split(' ').map((w: string) => w[0]).join('').slice(0, 2),
+        },
+        parent: {
+          name: `${b.parent?.firstName ?? ''} ${b.parent?.lastName ?? ''}`.trim() || '—',
+          phone: b.parent?.phone ?? '—',
+          email: b.parent?.email ?? '—',
+        },
+        teacher: {
+          name: b.teacher ? `${b.teacher.firstName ?? ''} ${b.teacher.lastName ?? ''}`.trim() : 'Unassigned',
+          phone: b.teacher?.phone ?? '—',
+          rating: Number(teacherProfile?.rating ?? 0),
+          specialties: teacherProfile?.specializations ?? [],
+          assigned: !!b.teacher,
+        },
+        activity: {
+          title: b.activity?.title ?? '—',
+          category: b.activity?.categoryName ?? b.activity?.category?.name ?? '—',
+          duration,
+          price: Number(b.activity?.pricePerSession ?? b.payment?.amount ?? 0),
+        },
+        feedback: {
+          id: b.review?.id ?? null,
+          submitted: !!b.review,
+          rating: b.review?.rating != null ? Number(b.review.rating) : null,
+          comment: b.review?.comment ?? null,
+          flagged: Boolean(b.review?.isFlagged),
+        },
+        issue: {
+          id: b.latestIssue?.id ?? null,
+          reported: !!b.latestIssue,
+          type: b.latestIssue?.issueType ?? null,
+          status: b.latestIssue?.status ?? null,
+          resolution: b.latestIssue?.resolution ?? null,
+          description: b.latestIssue?.description ?? null,
+        },
+        timeline: buildTimeline(b),
+      })
+
+      setIssueDraftStatus((b.latestIssue?.status ?? 'reviewing') as 'reported' | 'reviewing' | 'resolved')
+      setIssueDraftResolution((b.latestIssue?.resolution ?? 'support_only') as 'none' | 'support_only' | 'credit' | 'refund')
+      setIssueDraftDescription(b.latestIssue?.description ?? '')
+      setReviewEscalationNote(b.review?.comment ?? '')
+      setReviewEscalationResolution((b.latestIssue?.resolution ?? 'support_only') as 'none' | 'support_only' | 'credit' | 'refund')
+    } catch {
+      // fall back to mock
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadBookingDetail()
   }, [USE_MOCK_DATA, params.id])
 
   const booking = USE_MOCK_DATA ? mockBooking : (liveBooking ?? mockBooking)
@@ -145,6 +190,7 @@ export default function BookingDetailPage() {
     setActionError('')
     try {
       await adminApi.bookings.cancel(rawId)
+      await loadBookingDetail()
       setActionDone('Booking cancelled.')
       setConfirmAction('idle')
     } catch {
@@ -160,6 +206,7 @@ export default function BookingDetailPage() {
     setActionError('')
     try {
       await adminApi.payments.refund(rawId)
+      await loadBookingDetail()
       setActionDone('Refund issued successfully.')
       setConfirmAction('idle')
     } catch (e: any) {
@@ -176,11 +223,72 @@ export default function BookingDetailPage() {
     setActionError('')
     try {
       await adminApi.bookings.assign(rawId, { teacherId: reassignTeacherId.trim() })
+      await loadBookingDetail()
       setActionDone('Teacher reassigned successfully.')
       setConfirmAction('idle')
       setReassignTeacherId('')
     } catch {
       setActionError('Failed to reassign teacher. Check the teacher ID and try again.')
+    } finally {
+      setActionPending(false)
+    }
+  }
+
+  async function handleReviewFlag(nextFlagged: boolean) {
+    if (!booking.feedback.id || USE_MOCK_DATA) return
+    setActionPending(true)
+    setActionError('')
+    try {
+      await adminApi.reviews.flag(booking.feedback.id, { flagged: nextFlagged })
+      await loadBookingDetail()
+      setActionDone(nextFlagged ? 'Feedback flagged for quality follow-up.' : 'Feedback flag removed.')
+    } catch {
+      setActionError('Failed to update review flag.')
+    } finally {
+      setActionPending(false)
+    }
+  }
+
+  async function handleReviewEscalation() {
+    if (!booking.feedback.id || USE_MOCK_DATA) return
+    setActionPending(true)
+    setActionError('')
+    try {
+      await adminApi.reviews.escalate(booking.feedback.id, {
+        issueType: booking.feedback.rating != null && booking.feedback.rating <= 2 ? 'other' : 'schedule_issue',
+        resolution: reviewEscalationResolution,
+        description: reviewEscalationNote.trim() || booking.feedback.comment || undefined,
+      })
+      await loadBookingDetail()
+      setReviewEscalationOpen(false)
+      setActionDone('Feedback escalated into the session support queue.')
+    } catch {
+      setActionError('Failed to escalate feedback.')
+    } finally {
+      setActionPending(false)
+    }
+  }
+
+  async function handleIssueUpdate() {
+    if (!booking.issue.id || USE_MOCK_DATA) return
+    setActionPending(true)
+    setActionError('')
+    try {
+      await adminApi.disputes.updateIssue(booking.issue.id, {
+        status: issueDraftStatus,
+        resolution: issueDraftResolution,
+        description: issueDraftDescription.trim() || undefined,
+      })
+      await loadBookingDetail()
+      setActionDone(
+        issueDraftStatus === 'resolved'
+          ? issueDraftResolution === 'refund'
+            ? 'Issue resolved and refund processed if payment was successful.'
+            : 'Issue marked resolved.'
+          : 'Issue updated successfully.'
+      )
+    } catch {
+      setActionError('Failed to update session issue.')
     } finally {
       setActionPending(false)
     }
@@ -366,6 +474,139 @@ export default function BookingDetailPage() {
                 </div>
               </div>
             </>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+        <div className="card">
+          <h2 className="section-card__title" style={{ marginBottom: 'var(--space-3)' }}>Post-session Feedback</h2>
+          {loading ? (
+            <>
+              <SkeletonLine width={110} height={14} style={{ marginBottom: 8 }} />
+              <SkeletonLine width="80%" height={12} />
+            </>
+          ) : booking.feedback.submitted ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                <p style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-navy)' }}>
+                  {booking.feedback.rating}/5
+                </p>
+                {booking.feedback.flagged ? <span className="tag" style={{ background: '#FEF3C7', color: '#92400E' }}>Flagged</span> : null}
+                {booking.issue.reported ? <span className="tag">Escalated to support</span> : null}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--color-gray)' }}>
+                {booking.feedback.rating && booking.feedback.rating >= 4
+                  ? 'Positive feedback, eligible for rebooking prompts.'
+                  : 'Non-positive feedback, support-first follow-up recommended.'}
+              </p>
+              {booking.feedback.comment && (
+                <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'var(--color-bg)' }}>
+                  <p style={{ fontSize: 12, color: 'var(--color-navy)', lineHeight: 1.6 }}>{booking.feedback.comment}</p>
+                </div>
+              )}
+              {!USE_MOCK_DATA && (
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button className="btn btn--ghost btn--sm" onClick={() => void handleReviewFlag(!booking.feedback.flagged)} disabled={actionPending} type="button">
+                      {actionPending ? 'Saving…' : booking.feedback.flagged ? 'Remove Flag' : 'Flag For Review'}
+                    </button>
+                    <button className="btn btn--secondary btn--sm" onClick={() => setReviewEscalationOpen((value) => !value)} disabled={actionPending} type="button">
+                      {reviewEscalationOpen ? 'Hide Escalation' : 'Escalate Feedback'}
+                    </button>
+                  </div>
+                  {reviewEscalationOpen && (
+                    <div style={{ background: 'var(--color-mint)', padding: 'var(--space-3)', borderRadius: 'var(--radius-input)' }}>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-navy)', marginBottom: 8 }}>Escalation details</p>
+                      <select
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12, marginBottom: 8, boxSizing: 'border-box' }}
+                        value={reviewEscalationResolution}
+                        onChange={(e) => setReviewEscalationResolution(e.target.value as 'none' | 'support_only' | 'credit' | 'refund')}
+                      >
+                        <option value="support_only">Support follow-up</option>
+                        <option value="credit">Offer credit</option>
+                        <option value="refund">Review for refund</option>
+                        <option value="none">No resolution yet</option>
+                      </select>
+                      <textarea
+                        style={{ width: '100%', minHeight: 88, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12, boxSizing: 'border-box', resize: 'vertical' }}
+                        placeholder="What should ops know about this escalation?"
+                        value={reviewEscalationNote}
+                        onChange={(e) => setReviewEscalationNote(e.target.value)}
+                      />
+                      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                        <button className="btn btn--primary btn--sm" onClick={handleReviewEscalation} disabled={actionPending} type="button">
+                          {actionPending ? 'Escalating…' : 'Send To Support'}
+                        </button>
+                        <button className="btn btn--ghost btn--sm" onClick={() => setReviewEscalationOpen(false)} disabled={actionPending} type="button">Dismiss</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <p style={{ fontSize: 12, color: 'var(--color-gray)' }}>No parent feedback has been submitted for this session yet.</p>
+          )}
+        </div>
+
+        <div className="card">
+          <h2 className="section-card__title" style={{ marginBottom: 'var(--space-3)' }}>Issue Resolution</h2>
+          {loading ? (
+            <>
+              <SkeletonLine width={120} height={14} style={{ marginBottom: 8 }} />
+              <SkeletonLine width="75%" height={12} />
+            </>
+          ) : booking.issue.reported ? (
+            <>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                <span className="tag tag--gray">{booking.issue.type ?? 'Issue'}</span>
+                <span className="tag" style={{ background: '#FEE2E2', color: '#991B1B' }}>{booking.issue.status ?? 'reported'}</span>
+                {booking.issue.resolution && <span className="tag">{booking.issue.resolution}</span>}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--color-gray)' }}>
+                {booking.issue.description ?? 'The parent reported an issue and expects follow-up from Beam ops.'}
+              </p>
+              {!USE_MOCK_DATA && booking.issue.id && (
+                <div style={{ marginTop: 12, padding: 'var(--space-3)', borderRadius: 'var(--radius-input)', background: 'var(--color-bg)' }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-navy)', marginBottom: 8 }}>Ops resolution</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                    <select
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12, boxSizing: 'border-box' }}
+                      value={issueDraftStatus}
+                      onChange={(e) => setIssueDraftStatus(e.target.value as 'reported' | 'reviewing' | 'resolved')}
+                    >
+                      <option value="reported">Reported</option>
+                      <option value="reviewing">Under review</option>
+                      <option value="resolved">Resolved</option>
+                    </select>
+                    <select
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12, boxSizing: 'border-box' }}
+                      value={issueDraftResolution}
+                      onChange={(e) => setIssueDraftResolution(e.target.value as 'none' | 'support_only' | 'credit' | 'refund')}
+                    >
+                      <option value="support_only">Support only</option>
+                      <option value="credit">Credit</option>
+                      <option value="refund">Refund</option>
+                      <option value="none">No resolution</option>
+                    </select>
+                  </div>
+                  <textarea
+                    style={{ width: '100%', minHeight: 92, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12, boxSizing: 'border-box', resize: 'vertical' }}
+                    placeholder="Resolution notes shown to ops and used for parent update"
+                    value={issueDraftDescription}
+                    onChange={(e) => setIssueDraftDescription(e.target.value)}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button className="btn btn--primary btn--sm" onClick={handleIssueUpdate} disabled={actionPending} type="button">
+                      {actionPending ? 'Saving…' : 'Save Resolution'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p style={{ fontSize: 12, color: 'var(--color-gray)' }}>No issue has been reported against this booking.</p>
           )}
         </div>
       </div>

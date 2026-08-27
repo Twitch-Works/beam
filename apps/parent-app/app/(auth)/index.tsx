@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react'
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -8,11 +9,12 @@ import {
   FlatList,
   ViewToken,
 } from 'react-native'
-import { router } from 'expo-router'
+import { Redirect, router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, fontWeight } from '@/constants/theme'
+import { useLateOnboarding } from '@/lib/LateOnboardingContext'
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
 
@@ -47,14 +49,27 @@ const SLIDES: { id: string; iconName: IoniconName; title: string; subtitle: stri
 
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets()
+  const { enabled, isReady, state } = useLateOnboarding()
   const [activeIndex, setActiveIndex] = useState(0)
   const flatListRef = useRef<FlatList>(null)
-
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       if (viewableItems[0]) setActiveIndex(viewableItems[0].index ?? 0)
     }
   ).current
+
+  if (!isReady) {
+    return (
+      <View style={styles.loadingState}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    )
+  }
+
+  if (enabled) {
+    if (state.completed) return <Redirect href="/(root)/" />
+    return <Redirect href="/(auth)/late-onboarding/location" />
+  }
 
   const handleNext = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -126,6 +141,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.white,
+  },
+  loadingState: {
+    flex: 1,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   slide: {
     width,

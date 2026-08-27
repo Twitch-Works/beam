@@ -11,7 +11,7 @@ import {
   Alert,
   Linking,
 } from 'react-native'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Haptics from 'expo-haptics'
 import { Ionicons } from '@expo/vector-icons'
@@ -29,6 +29,7 @@ type EmailMode = 'login' | 'register'
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets()
+  const { redirectTo } = useLocalSearchParams<{ redirectTo?: string }>()
   const [authMethod, setAuthMethod] = useState<AuthMethod>('email')
   const [emailMode, setEmailMode] = useState<EmailMode>('login')
   const [phone, setPhone] = useState('')
@@ -76,11 +77,21 @@ export default function LoginScreen() {
 
   const routeFromOnboardingStep = (onboardingStep?: string) => {
     if (!onboardingStep) {
-      router.replace('/(auth)/parent-setup')
+      router.replace({
+        pathname: '/(auth)/parent-setup',
+        params: redirectTo ? { redirectTo } : undefined,
+      })
       return
     }
     if (onboardingStep === 'parent-done') {
-      router.replace('/(auth)/child-setup')
+      router.replace({
+        pathname: '/(auth)/child-setup',
+        params: redirectTo ? { redirectTo } : undefined,
+      })
+      return
+    }
+    if (typeof redirectTo === 'string' && redirectTo.length > 0) {
+      router.replace(redirectTo as any)
       return
     }
     router.replace('/(root)/')

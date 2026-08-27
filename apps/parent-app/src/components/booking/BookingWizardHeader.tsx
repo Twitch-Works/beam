@@ -7,11 +7,19 @@ interface BookingWizardHeaderProps {
   step: number
   totalSteps: number
   onBack: () => void
+  title?: string
+  stepLabels?: string[]
 }
 
 const STEP_LABELS = ['Date', 'Time', 'Payment']
 
-export function BookingWizardHeader({ step, totalSteps, onBack }: BookingWizardHeaderProps) {
+export function BookingWizardHeader({
+  step,
+  totalSteps,
+  onBack,
+  title = 'Book Session',
+  stepLabels = STEP_LABELS,
+}: BookingWizardHeaderProps) {
   return (
     <View style={styles.container}>
       {/* Nav row */}
@@ -20,7 +28,7 @@ export function BookingWizardHeader({ step, totalSteps, onBack }: BookingWizardH
           <Ionicons name="arrow-back" size={20} color={colors.navy} />
         </TouchableOpacity>
         <View style={styles.titleWrap}>
-          <Text style={styles.title}>Book Session</Text>
+          <Text style={styles.title}>{title}</Text>
           <Text style={styles.stepText}>Step {step} of {totalSteps}</Text>
         </View>
         <View style={{ width: 36 }} />
@@ -28,7 +36,7 @@ export function BookingWizardHeader({ step, totalSteps, onBack }: BookingWizardH
 
       {/* Stepper */}
       <View style={styles.stepper}>
-        {STEP_LABELS.map((label, i) => {
+        {stepLabels.map((label, i) => {
           const n = i + 1
           const done = n < step
           const active = n === step
@@ -47,11 +55,11 @@ export function BookingWizardHeader({ step, totalSteps, onBack }: BookingWizardH
                     <Text style={[styles.stepNum, active && styles.stepNumActive]}>{n}</Text>
                   )}
                 </View>
-                <Text style={[styles.stepLabel, (done || active) && styles.stepLabelActive]}>
+              <Text style={[styles.stepLabel, (done || active) && styles.stepLabelActive]}>
                   {label}
                 </Text>
               </View>
-              {i < STEP_LABELS.length - 1 && (
+              {i < stepLabels.length - 1 && (
                 <View style={[styles.stepLine, i < step - 1 && styles.stepLineDone]} />
               )}
             </React.Fragment>

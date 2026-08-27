@@ -6,11 +6,13 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, fontWeight, shadows } from '@/constants/theme'
 import { useAuth } from '@/lib/AuthContext'
+import { useLateOnboarding } from '@/lib/LateOnboardingContext'
 import { useChildren } from '@/hooks/useChildren'
 import { useBookings } from '@/hooks/useBookings'
 import { ProfileSkeleton } from '@/components/profile/ProfileSkeleton'
 import { ProfileUserCard } from '@/components/profile/ProfileUserCard'
 import { ProfileStats } from '@/components/profile/ProfileStats'
+import { LoginRequiredState } from '@/components/LoginRequiredState'
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
 
@@ -47,7 +49,8 @@ const MenuItem = React.memo(function MenuItem({ icon, label, value, onPress, dan
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets()
   const [notifEnabled, setNotifEnabled] = React.useState(true)
-  const { signOut, user } = useAuth()
+  const { signOut, user, session } = useAuth()
+  const { enabled } = useLateOnboarding()
   const { data: childrenData, isLoading: childrenLoading } = useChildren()
   const { data: completedData, isLoading: bookingsLoading } = useBookings('completed')
   const isLoading = childrenLoading || bookingsLoading
@@ -75,10 +78,26 @@ export default function ProfileScreen() {
     router.replace('/(auth)/')
   }
 
+  if (!session && enabled) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Profile</Text>
+        </View>
+        <LoginRequiredState
+          title="Login to manage your account"
+          subtitle="You can browse recommendations without login. Account settings become available once you sign in."
+          redirectTo="/(root)/profile"
+        />
+      </View>
+    )
+  }
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Profile</Text>
+        <Text style={styles.subtitle}>Manage children, addresses, credits, referrals, and support.</Text>
       </View>
 
       {isLoading ? <ProfileSkeleton bottomInset={insets.bottom} /> : null}
@@ -91,13 +110,29 @@ export default function ProfileScreen() {
         <ProfileUserCard fullName={fullName} initial={initial} phone={phone} city={city} />
         <ProfileStats sessions={sessionsCount} activities={activitiesCount} children={childrenCount} />
 
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryPill}>
+            <Ionicons name="people-outline" size={14} color={colors.primary} />
+            <Text style={styles.summaryPillText}>{childrenCount} child profiles</Text>
+          </View>
+          <View style={styles.summaryPill}>
+            <Ionicons name="wallet-outline" size={14} color={colors.primary} />
+            <Text style={styles.summaryPillText}>Wallet & credits</Text>
+          </View>
+          <View style={styles.summaryPill}>
+            <Ionicons name="help-circle-outline" size={14} color={colors.primary} />
+            <Text style={styles.summaryPillText}>Help available</Text>
+          </View>
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>Account</Text>
           <View style={styles.menuGroup}>
-            <MenuItem icon="person-outline"   label="Edit Profile"     onPress={() => router.push('/(root)/profile/edit')} />
-            <MenuItem icon="location-outline" label="Delivery Address" value={city || 'Add address'} onPress={() => Alert.alert('Delivery Address', 'Your sessions are delivered to your registered city. Update it in Edit Profile.')} />
-            <MenuItem icon="card-outline"     label="Payment Methods"  onPress={() => Alert.alert('Payment Methods', 'Payment details are entered at checkout via Razorpay.')} />
-            <MenuItem icon="gift-outline"     label="Refer & Earn"     onPress={async () => { await Share.share({ message: 'Join Beam and get your first session free! Use my referral: https://beamkids.in/refer' }) }} />
+            <MenuItem icon="people-outline" label="Children" value={childrenCount > 0 ? `${childrenCount}` : 'Add child'} onPress={() => router.push('/(root)/kids')} />
+            <MenuItem icon="location-outline" label="Addresses" value={city || 'Add address'} onPress={() => Alert.alert('Addresses', 'Your current service city is attached to your profile. Full address management can be layered here next.')} />
+            <MenuItem icon="wallet-outline" label="Wallet & Credits" value="₹0" onPress={() => Alert.alert('Wallet & Credits', 'Credits, refunds, and wallet balance will appear here.')} />
+            <MenuItem icon="gift-outline" label="Referrals" onPress={async () => { await Share.share({ message: 'Join Beam and get your first session free! Use my referral: https://beamkids.in/refer' }) }} />
+            <MenuItem icon="person-outline" label="Edit Profile" onPress={() => router.push('/(root)/profile/edit')} />
           </View>
         </View>
 
@@ -106,17 +141,16 @@ export default function ProfileScreen() {
           <View style={styles.menuGroup}>
             <MenuItem icon="notifications-outline" label="Push Notifications" toggle toggleValue={notifEnabled} onToggle={setNotifEnabled} />
             <MenuItem icon="language-outline" label="Language" value="English" onPress={() => {}} />
-            <MenuItem icon="shield-checkmark-outline" label="Privacy Settings" onPress={() => Linking.openURL('https://beamkids.in/privacy')} />
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Support</Text>
+          <Text style={styles.sectionHeader}>Help</Text>
           <View style={styles.menuGroup}>
             <MenuItem icon="chatbubble-ellipses-outline" label="Chat with Us" onPress={() => Linking.openURL('https://wa.me/919999999999')} />
             <MenuItem icon="help-circle-outline" label="FAQs" onPress={() => Linking.openURL('https://beamkids.in/faq')} />
-            <MenuItem icon="document-text-outline" label="Terms & Privacy" onPress={() => Linking.openURL('https://beamkids.in/terms')} />
-            <MenuItem icon="star-outline" label="Rate the App" onPress={() => Linking.openURL('https://apps.apple.com/app/beam')} />
+            <MenuItem icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => Linking.openURL('https://beamkids.in/privacy')} />
+            <MenuItem icon="document-text-outline" label="Terms of Service" onPress={() => Linking.openURL('https://beamkids.in/terms')} />
           </View>
         </View>
 
@@ -144,7 +178,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.lightGray },
   header: { backgroundColor: colors.white, paddingHorizontal: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   title: { fontSize: fontSize.h1, fontWeight: fontWeight.bold, fontFamily: 'Nunito-Bold', color: colors.navy },
+  subtitle: { marginTop: 2, fontSize: fontSize.caption, fontFamily: 'Nunito-Regular', color: colors.gray },
   scroll: { padding: spacing.md, gap: spacing.md },
+  summaryCard: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, backgroundColor: colors.white, borderRadius: radius.card, padding: spacing.md, ...shadows.card },
+  summaryPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.mint, borderRadius: radius.avatar, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs + 2 },
+  summaryPillText: { fontSize: fontSize.caption, fontFamily: 'Nunito-SemiBold', color: colors.primary },
   section: { gap: spacing.sm },
   sectionHeader: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, fontFamily: 'Nunito-SemiBold', color: colors.gray, textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: spacing.xs },
   menuGroup: { backgroundColor: colors.white, borderRadius: radius.card, overflow: 'hidden', ...shadows.card },

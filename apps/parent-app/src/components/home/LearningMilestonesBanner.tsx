@@ -14,7 +14,7 @@ const SKILLS = [
 export const LearningMilestonesBanner = React.memo(function LearningMilestonesBanner() {
   const handlePress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    router.push('/(root)/kids')
+    router.push('/(root)/profile')
   }
 
   return (

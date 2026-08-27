@@ -10,7 +10,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, fontWeight } from '@/constants/theme'
@@ -25,6 +25,7 @@ function formatPhoneForInput(phone?: string | null) {
 
 export default function ParentSetupScreen() {
   const insets = useSafeAreaInsets()
+  const { redirectTo } = useLocalSearchParams<{ redirectTo?: string }>()
   const { user, parentUserId } = useAuth()
   const existingFirstName = (user?.user_metadata?.firstName as string | undefined)?.trim() ?? ''
   const existingLastName = (user?.user_metadata?.lastName as string | undefined)?.trim() ?? ''
@@ -99,7 +100,10 @@ export default function ParentSetupScreen() {
         return
       }
 
-      router.replace('/(auth)/child-setup')
+      router.replace({
+        pathname: '/(auth)/child-setup',
+        params: redirectTo ? { redirectTo } : undefined,
+      })
     } finally {
       setLoading(false)
     }

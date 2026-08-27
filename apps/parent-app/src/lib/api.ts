@@ -21,11 +21,28 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 
 export const parentApi = {
   activities: {
-    list: (params?: { category?: string; ageGroup?: string; search?: string; page?: number; limit?: number; lat?: number; lng?: number; radiusKm?: number }) => {
+    list: (params?: {
+      category?: string
+      ageGroup?: string
+      search?: string
+      activityFormat?: string
+      venueType?: string
+      trialAvailable?: boolean
+      timeOfDay?: 'morning' | 'afternoon' | 'evening'
+      page?: number
+      limit?: number
+      lat?: number
+      lng?: number
+      radiusKm?: number
+    }) => {
       const q = new URLSearchParams()
       if (params?.category)  q.set('category',  params.category)
       if (params?.ageGroup)  q.set('ageGroup',   params.ageGroup)
       if (params?.search)    q.set('search',     params.search)
+      if (params?.activityFormat) q.set('activityFormat', params.activityFormat)
+      if (params?.venueType) q.set('venueType', params.venueType)
+      if (params?.trialAvailable !== undefined) q.set('trialAvailable', String(params.trialAvailable))
+      if (params?.timeOfDay) q.set('timeOfDay', params.timeOfDay)
       if (params?.page)      q.set('page',       String(params.page))
       if (params?.limit)     q.set('limit',      String(params.limit))
       if (params?.lat != null) q.set('lat',      String(params.lat))
@@ -85,6 +102,42 @@ export const parentApi = {
         method: 'POST',
         body: JSON.stringify({ parentId, rating, comment }),
       }),
+    reportIssue: (
+      bookingId: string,
+      body: {
+        parentId: string
+        issueType: 'no_show' | 'venue_issue' | 'safety_issue' | 'schedule_issue' | 'other'
+        description?: string
+        desiredOutcome?: 'refund' | 'credit' | 'rebooking' | 'support'
+        requestedResolution?: 'none' | 'refund' | 'credit' | 'support_only'
+        attachmentUrls?: string[]
+        intakeAnswers?: Array<{ questionId: string; label: string; answer: string }>
+      },
+    ) =>
+      apiFetch<{
+        ok: boolean
+        issue: {
+          id: string
+          bookingId: string
+          parentId: string
+          teacherId?: string | null
+          caseReference: string
+          issueType: 'no_show' | 'venue_issue' | 'safety_issue' | 'schedule_issue' | 'other'
+          description?: string | null
+          status: 'reported' | 'reviewing' | 'resolved'
+          resolution: 'none' | 'refund' | 'credit' | 'support_only'
+          desiredOutcome: 'refund' | 'credit' | 'rebooking' | 'support'
+          nextAction?: string | null
+          slaTargetAt?: string | null
+          attachmentUrls: string[]
+          intakeAnswers: Array<{ questionId: string; label: string; answer: string }>
+          reportedAt: string
+          resolvedAt?: string | null
+        }
+      }>(`/bookings/${bookingId}/issues`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   },
   payments: {
     createOrder: (bookingId: string) =>
@@ -103,9 +156,22 @@ export const parentApi = {
   children: {
     list: (parentId: string) =>
       apiFetch<{ items: Child[] }>(`/children?parentId=${parentId}`),
+    create: (body: {
+      parentId: string
+      firstName: string
+      lastName?: string
+      dateOfBirth: string
+      gender?: string
+      interests?: string[]
+      notes?: string
+    }) =>
+      apiFetch<Child>('/children', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     progress: (childId: string) =>
       apiFetch<ChildProgress>(`/children/${childId}/progress`),
-    update: (childId: string, parentId: string, body: { firstName?: string; lastName?: string; dateOfBirth?: string }) =>
+    update: (childId: string, parentId: string, body: { firstName?: string; lastName?: string; dateOfBirth?: string; gender?: string; interests?: string[]; notes?: string }) =>
       apiFetch<Child>(`/children/${childId}`, {
         method: 'PATCH',
         body: JSON.stringify({ parentId, ...body }),
@@ -128,12 +194,12 @@ export const parentApi = {
       if (params.phone) q.set('phone', params.phone)
       return apiFetch<ParentUser>(`/users/me?${q.toString()}`)
     },
-    registerParent: (body: { userId?: string; email: string; firstName: string; lastName: string; phone?: string }) =>
+    registerParent: (body: { userId?: string; email: string; firstName: string; lastName: string; phone?: string; city?: string; latitude?: number; longitude?: number }) =>
       apiFetch<{ id: string }>('/users/register-parent', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
-    updateProfile: (body: { userId: string; firstName?: string; lastName?: string; city?: string; phone?: string }) =>
+    updateProfile: (body: { userId: string; firstName?: string; lastName?: string; city?: string; phone?: string; latitude?: number; longitude?: number }) =>
       apiFetch<{ ok: boolean }>('/users/profile', {
         method: 'PATCH',
         body: JSON.stringify(body),
@@ -145,8 +211,17 @@ export type ActivityDetail = Activity & {
   description: string
   materialsNeeded: string | null
   preparationNotes: string | null
+  parentValue?: string | null
+  sessionFlow?: string | null
+  parentWaitingPolicy?: string | null
+  accessibilityNotes?: string | null
+  whatToBring?: string | null
+  cancellationPolicy?: string | null
   reviewCount: number
+  teacherCount?: number
   teacherId: string | null
+  nextAvailableDate?: string | null
+  nextAvailableStartTime?: string | null
   teachers: ActivityTeacher[]
   category: { id: string; name: string; color: string } | null
 }
@@ -167,6 +242,9 @@ export type Child = {
   firstName: string
   lastName: string | null
   dateOfBirth: string
+  gender?: string | null
+  interests?: string[]
+  notes?: string | null
 }
 
 export type ParentUser = {
@@ -176,6 +254,8 @@ export type ParentUser = {
   lastName: string
   phone: string | null
   city: string | null
+  latitude?: number | null
+  longitude?: number | null
   role: 'parent' | 'teacher' | 'admin' | 'super_admin'
 }
 
@@ -185,6 +265,10 @@ export type Activity = {
   description: string
   ageGroup: string
   sessionType: string
+  deliveryMode?: 'at_home' | 'online'
+  venueType?: 'indoor' | 'outdoor' | 'online' | 'at_home'
+  activityFormat?: 'trial' | 'one_time' | 'recurring'
+  trialAvailable?: boolean
   sessionDurationMins: number
   pricePerSession: string
   imageUrl: string | null
@@ -192,15 +276,24 @@ export type Activity = {
   categoryId: string
   categoryName: string | null
   categoryColor: string | null
+  locality?: string | null
+  city?: string | null
   totalBookings: number
+  reviewCount?: number
+  teacherCount?: number
   avgRating: string | null
   distanceKm?: number | null
+  nextAvailableDate?: string | null
+  nextAvailableStartTime?: string | null
 }
 
 export type Booking = {
   id: string
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'rescheduled'
   sessionType: string
+  deliveryMode?: 'at_home' | 'online' | null
+  locality?: string | null
+  city?: string | null
   totalAmount: string
   scheduledAt: string | null
   createdAt: string
@@ -215,6 +308,24 @@ export type Booking = {
   canComplete?: boolean
   otpVisible?: boolean
   paymentStatus?: 'pending' | 'success' | 'failed' | 'refunded' | null
+  issueReported?: boolean
+  issueId?: string | null
+  issueCaseReference?: string | null
+  issueStatus?: 'reported' | 'reviewing' | 'resolved' | null
+  issueResolution?: 'none' | 'refund' | 'credit' | 'support_only' | null
+  issueResolutionLabel?: string | null
+  issueType?: 'no_show' | 'venue_issue' | 'safety_issue' | 'schedule_issue' | 'other' | null
+  issueDescription?: string | null
+  issueReportedAt?: string | null
+  issueDesiredOutcome?: 'refund' | 'credit' | 'rebooking' | 'support' | null
+  issueNextAction?: string | null
+  issueSlaTargetAt?: string | null
+  issueAttachmentUrls?: string[]
+  issueIntakeAnswers?: Array<{ questionId: string; label: string; answer: string }>
+  issueResolvedAt?: string | null
+  feedbackSubmitted?: boolean
+  feedbackRating?: number | null
+  feedbackComment?: string | null
   activityId: string | null
   activityTitle: string | null
   activityImage: string | null
@@ -240,6 +351,7 @@ export type Teacher = {
   city: string | null
   verificationStatus: 'pending' | 'verified' | 'rejected'
   specializations: string[]
+  languages?: string[]
   totalSessions: number
   activities: {
     id: string
@@ -259,6 +371,7 @@ export type ActivityTeacher = {
   city: string | null
   verificationStatus: 'pending' | 'verified' | 'rejected'
   specializations: string[]
+  languages?: string[]
   totalSessions: number
 }
 

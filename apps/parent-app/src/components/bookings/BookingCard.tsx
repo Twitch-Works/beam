@@ -20,6 +20,11 @@ function formatScheduled(iso: string | null) {
   }
 }
 
+function isTodayBooking(booking: ApiBooking): boolean {
+  if (!booking.scheduledAt || ['completed', 'cancelled'].includes(booking.status)) return false
+  return new Date(booking.scheduledAt).toDateString() === new Date().toDateString()
+}
+
 export function isLiveBooking(booking: ApiBooking): boolean {
   if (!booking.scheduledAt || !['confirmed', 'in_progress'].includes(booking.status)) return false
   const sessionStart = new Date(booking.scheduledAt).getTime()
@@ -99,14 +104,15 @@ interface BookingCardProps {
 }
 
 export const BookingCard = React.memo(function BookingCard({ booking }: BookingCardProps) {
-  const [showRating, setShowRating] = useState(false)
-  const [rated, setRated] = useState(false)
   const teacherName = booking.teacherFirstName
     ? `${booking.teacherFirstName} ${booking.teacherLastName ?? ''}`.trim()
     : '—'
   const { weekday, date, time } = formatScheduled(booking.scheduledAt)
   const live = isLiveBooking(booking)
-  const locationLabel = booking.sessionType === 'home' ? 'Home' : 'Online'
+  const today = isTodayBooking(booking)
+  const locationLabel = booking.deliveryMode === 'at_home' ? 'Home' : 'Online'
+  const localityLabel = booking.locality ?? booking.city ?? 'Your area'
+  const positiveFeedback = (booking.feedbackRating ?? 0) >= 4
 
   const openBookingDetails = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -119,7 +125,13 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
       {live && (
         <View style={styles.liveStrip}>
           <View style={styles.liveDot} />
-          <Text style={styles.liveText}>LIVE · Teacher on the way · 12 min away</Text>
+          <Text style={styles.liveText}>LIVE · Check-in code and issue reporting are available now</Text>
+        </View>
+      )}
+      {!live && today && (
+        <View style={styles.todayStrip}>
+          <Ionicons name="sunny-outline" size={14} color={colors.primary} />
+          <Text style={styles.todayText}>TODAY · Open for arrival instructions, map, and support</Text>
         </View>
       )}
 
@@ -157,7 +169,7 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
 
           <View style={styles.metaRow}>
             <Ionicons name="location-outline" size={13} color={colors.gray} />
-            <Text style={styles.metaText}>{locationLabel} · Bandra West</Text>
+            <Text style={styles.metaText}>{locationLabel} · {localityLabel}</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -193,7 +205,7 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
             }}
             activeOpacity={0.8}
           >
-            <Text style={styles.actionBtnTextTeal}>Reschedule</Text>
+            <Text style={styles.actionBtnTextTeal}>{today ? 'Open Session Plan' : 'Reschedule'}</Text>
           </TouchableOpacity>
           <View style={styles.actionDivider} />
           <TouchableOpacity
@@ -201,7 +213,7 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Alert.alert('Support', 'Email us at support@beam.app') }}
             activeOpacity={0.8}
           >
-            <Text style={styles.actionBtnTextGray}>Support</Text>
+            <Text style={styles.actionBtnTextGray}>{today ? 'Support' : 'Support'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -218,34 +230,40 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
         </View>
       )}
 
-      {/* Completed: Rate (amber) + Book Again (mint) */}
-      {showRating && (
-        <RatingModal
-          booking={booking}
-          onClose={() => setShowRating(false)}
-          onSubmitted={() => { setShowRating(false); setRated(true) }}
-        />
-      )}
-
       {booking.status === 'completed' && (
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.actionBtn, styles.rateBtn]}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); if (!rated) setShowRating(true) }}
-            activeOpacity={rated ? 1 : 0.8}
-            disabled={rated}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+              router.push(`/(root)/booking/${booking.id}`)
+            }}
+            activeOpacity={0.8}
           >
-            <Ionicons name={rated ? 'star' : 'star-outline'} size={14} color="#92400E" />
-            <Text style={styles.rateBtnText}>{rated ? 'Rated' : 'Rate'}</Text>
+            <Ionicons name={booking.feedbackSubmitted ? 'checkmark-circle-outline' : 'star-outline'} size={14} color="#92400E" />
+            <Text style={styles.rateBtnText}>{booking.feedbackSubmitted ? 'View Feedback' : 'Share Feedback'}</Text>
           </TouchableOpacity>
           <View style={styles.actionDivider} />
-          {booking.activityId && (
+          {booking.feedbackSubmitted && positiveFeedback && booking.activityId ? (
             <TouchableOpacity
               style={[styles.actionBtn, styles.bookAgainBtn]}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(`/(root)/slots/${booking.activityId}`) }}
               activeOpacity={0.8}
             >
               <Text style={styles.bookAgainBtnText}>Book Again</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.bookAgainBtn]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                router.push({ pathname: '/(root)/explore', params: { search: booking.activityTitle ?? undefined } })
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.bookAgainBtnText}>
+                {booking.feedbackSubmitted && !positiveFeedback ? 'Explore Similar' : 'Explore Similar'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -285,6 +303,17 @@ const styles = StyleSheet.create({
   },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ADE80' },
   liveText: { fontSize: fontSize.caption, fontFamily: 'Nunito-Bold', color: colors.white, letterSpacing: 0.3 },
+  todayStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.mint,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.primary + '22',
+  },
+  todayText: { fontSize: fontSize.caption, fontFamily: 'Nunito-Bold', color: colors.primary, letterSpacing: 0.2 },
 
   cardBody: {
     flexDirection: 'row',

@@ -177,6 +177,18 @@ export default function ActivityDetailPage() {
         tags: form.tags,
         materialsNeeded: form.materialsNeeded || undefined,
         preparationNotes: form.preparationNotes || undefined,
+        deliveryMode: form.deliveryMode,
+        venueType: form.venueType,
+        activityFormat: form.activityFormat,
+        trialAvailable: form.trialAvailable === 'true',
+        locality: form.locality || undefined,
+        city: form.city || undefined,
+        parentValue: form.parentValue || undefined,
+        sessionFlow: form.sessionFlow || undefined,
+        parentWaitingPolicy: form.parentWaitingPolicy || undefined,
+        accessibilityNotes: form.accessibilityNotes || undefined,
+        whatToBring: form.whatToBring || undefined,
+        cancellationPolicy: form.cancellationPolicy || undefined,
         status,
       })
       setSaved(true)
