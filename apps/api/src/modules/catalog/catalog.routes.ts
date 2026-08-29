@@ -238,6 +238,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
         schema.teachers.bio,
         schema.teachers.verificationStatus,
         schema.teachers.specializations,
+        schema.teachers.languages,
       )
       .orderBy(schema.users.firstName, schema.users.lastName)
 

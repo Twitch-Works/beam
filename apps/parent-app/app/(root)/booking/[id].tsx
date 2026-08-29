@@ -282,7 +282,10 @@ export default function BookingDetailScreen() {
   const handleReschedule = async () => {
     if (!booking?.activityId) return
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    router.push({ pathname: `/(root)/slots/${booking.activityId}`, params: { bookingId: booking.id } })
+    router.push({
+      pathname: `/(root)/slots/${booking.activityId}`,
+      params: { bookingId: booking.id, flowId: String(Date.now()) },
+    })
   }
 
   const handleVerifyOtp = async () => {
@@ -934,7 +937,14 @@ export default function BookingDetailScreen() {
                   </View>
                   <View style={styles.inlineActions}>
                     {booking.activityId && (
-                      <Button variant="secondary" label="Same Time Next Week" onPress={() => router.push(`/(root)/slots/${booking.activityId}`)} />
+                      <Button
+                        variant="secondary"
+                        label="Same Time Next Week"
+                        onPress={() => router.push({
+                          pathname: `/(root)/slots/${booking.activityId}`,
+                          params: { flowId: String(Date.now()) },
+                        })}
+                      />
                     )}
                     {booking.activityId && (
                       <Button variant="secondary" label="Join 4-Session Plan" onPress={() => router.push(`/(root)/choose-booking/${booking.activityId}`)} />
@@ -1000,7 +1010,10 @@ export default function BookingDetailScreen() {
               variant="secondary"
               icon="refresh-outline"
               label="Rebook this activity"
-              onPress={() => router.push(`/(root)/slots/${booking.activityId}`)}
+              onPress={() => router.push({
+                pathname: `/(root)/slots/${booking.activityId}`,
+                params: { flowId: String(Date.now()) },
+              })}
             />
           )}
           {booking.canReschedule && (

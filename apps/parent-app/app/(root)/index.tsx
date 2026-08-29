@@ -26,14 +26,14 @@ import { LocationSheet } from '@/components/LocationSheet'
 import type { Activity as ApiActivity } from '@/lib/api'
 
 const CATEGORIES = [
-  { id: 'art',     label: 'Art & Craft', filterValue: 'Art & Craft',     icon: 'color-palette-outline', color: colors.coral },
-  { id: 'music',   label: 'Music',       filterValue: 'Music',           icon: 'musical-notes-outline', color: colors.navy },
-  { id: 'dance',   label: 'Dance',       filterValue: 'Dance',           icon: 'accessibility-outline', color: colors.lavender },
-  { id: 'stem',    label: 'STEM',        filterValue: 'STEM',            icon: 'code-slash-outline',    color: colors.primary },
-  { id: 'math',    label: 'Math',        filterValue: 'Math & Logic',    icon: 'calculator-outline',    color: colors.navy },
-  { id: 'stories', label: 'Stories',     filterValue: 'Storytelling',    icon: 'book-outline',          color: colors.success },
-  { id: 'yoga',    label: 'Yoga',        filterValue: 'Yoga & Wellness', icon: 'leaf-outline',          color: colors.primary },
-  { id: 'cooking', label: 'Cooking',     filterValue: 'Cooking',         icon: 'restaurant-outline',    color: colors.coral },
+  { id: 'art', label: 'Art & Craft', filterValue: 'Art & Craft', icon: 'color-palette-outline', color: colors.coral },
+  { id: 'music', label: 'Music', filterValue: 'Music', icon: 'musical-notes-outline', color: colors.navy },
+  { id: 'dance', label: 'Dance', filterValue: 'Dance', icon: 'accessibility-outline', color: colors.lavender },
+  { id: 'stem', label: 'STEM', filterValue: 'STEM', icon: 'code-slash-outline', color: colors.primary },
+  { id: 'math', label: 'Math', filterValue: 'Math & Logic', icon: 'calculator-outline', color: colors.navy },
+  { id: 'stories', label: 'Stories', filterValue: 'Storytelling', icon: 'book-outline', color: colors.success },
+  { id: 'yoga', label: 'Yoga', filterValue: 'Yoga & Wellness', icon: 'leaf-outline', color: colors.primary },
+  { id: 'cooking', label: 'Cooking', filterValue: 'Cooking', icon: 'restaurant-outline', color: colors.coral },
 ] as const
 
 const GUEST_INTEREST_CATEGORY_MAP: Record<string, string> = {
@@ -113,6 +113,7 @@ export default function HomeScreen() {
 
   const handleActivityPress = useCallback(async (id: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    console.log("Navigating to activity", id);
     router.push(`/(root)/activity/${id}`)
   }, [])
 
@@ -220,14 +221,17 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.recommendedRow}
           >
-            {recommended.map((activity) => (
-              <View key={activity.id} style={styles.recommendedCard}>
-                <ActivityCard
-                  activity={activity}
-                  onPress={() => handleActivityPress(activity.id)}
-                />
-              </View>
-            ))}
+            {recommended.map((activity) => {
+              console.log("ACTIVITY", activity);
+              return (
+                <View key={activity.id} style={styles.recommendedCard}>
+                  <ActivityCard
+                    activity={activity}
+                    onPress={() => handleActivityPress(activity.id)}
+                  />
+                </View>
+              )
+            })}
           </ScrollView>
         )}
 
@@ -303,7 +307,10 @@ export default function HomeScreen() {
                         totalBookings: 0,
                         avgRating: null,
                       }}
-                      onPress={() => router.push(`/(root)/slots/${booking.activityId}`)}
+                      onPress={() => router.push({
+                        pathname: `/(root)/slots/${booking.activityId}`,
+                        params: { flowId: String(Date.now()) },
+                      })}
                     />
                   </View>
                 ))}

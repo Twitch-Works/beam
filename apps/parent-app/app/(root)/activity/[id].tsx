@@ -44,6 +44,8 @@ export default function ActivityDetailScreen() {
   })
 
   useEffect(() => {
+    console.log('activity?.teachers', activity?.teachers);
+    console.log("isError ", isError, "isLoading ", isLoading, "activity ", activity);
     if (!activity?.teachers?.length) {
       if (selectedTeacherIndex !== 0) setSelectedTeacherIndex(0)
       return

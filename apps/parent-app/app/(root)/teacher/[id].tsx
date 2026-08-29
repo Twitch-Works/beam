@@ -22,6 +22,7 @@ export default function TeacherProfileScreen() {
     router.push({
       pathname: `/(root)/slots/${activityId}`,
       params: {
+        flowId: String(Date.now()),
         teacherId: id ?? '',
         teacherName: teacher ? `${teacher.firstName} ${teacher.lastName ?? ''}`.trim() : '',
       },

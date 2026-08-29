@@ -44,6 +44,7 @@ export default function SelectChildScreen() {
     time,
     duration,
     price,
+    flowId,
   } = useLocalSearchParams<{
     id: string
     bookingType?: string
@@ -55,6 +56,7 @@ export default function SelectChildScreen() {
     time: string
     duration?: string
     price?: string
+    flowId?: string
   }>()
   const { data: activity } = useActivity(id ?? null)
   const { data: childrenData, isLoading } = useChildren()
@@ -70,6 +72,15 @@ export default function SelectChildScreen() {
   const bookingLabel = bookingTypeLabel ?? getBookingTypeLabel(bookingType)
   const parsedPrice = price ? parseFloat(price) : activity ? parseFloat(activity.pricePerSession) : 0
   const durationMins = duration ? Number(duration) : activity?.sessionDurationMins
+
+  useEffect(() => {
+    setSelectedChildId(null)
+    setShowAddChild(false)
+    setSaving(false)
+    setChildName('')
+    setAgeBand('5-7')
+    setGender(null)
+  }, [flowId, id, slotId, date, time, bookingType, teacherId])
 
   useEffect(() => {
     if (children.length === 0) {
@@ -133,6 +144,7 @@ export default function SelectChildScreen() {
         duration: durationMins ? String(durationMins) : '',
         price: String(parsedPrice),
         childId: selectedChild.id,
+        flowId: flowId ?? '',
       },
     })
   }

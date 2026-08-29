@@ -39,6 +39,7 @@ export function useActivities(filters?: Filters) {
 }
 
 export function useActivity(id: string | null) {
+  console.log('useActivity id', id, "FETCHING ACTIVITY");
   return useQuery({
     queryKey: ['activity', id],
     queryFn: () => parentApi.activities.get(id!),

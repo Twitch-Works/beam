@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
-import { eq, and, or, desc, ne, inArray } from 'drizzle-orm'
+import { eq, and, or, desc, ne, inArray, count } from 'drizzle-orm'
 import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
 
 const MAX_BOOKING_HOURS = 24 * 15
@@ -12,6 +12,7 @@ const OTP_VISIBLE_WINDOW_AFTER_HOURS = 3
 const DEVELOPMENT_OTP = '000000'
 const APP_MODE = process.env.APP_MODE ?? process.env.NODE_ENV ?? 'development'
 const MIN_BOOKING_HOURS = APP_MODE === 'development' ? 0 : 24
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function parseSlotDateTime(slot: { date: string; startTime: string }) {
   return new Date(`${slot.date}T${slot.startTime}`)
@@ -179,6 +180,61 @@ async function getLatestSessionIssuesMap(bookingIds: string[]) {
 }
 
 export async function bookingRoutes(fastify: FastifyInstance) {
+  fastify.get<{ Querystring: { status?: 'pending' | 'verified' | 'rejected'; limit?: string } }>('/teachers', async (req, reply) => {
+    const status = req.query.status ?? 'verified'
+    const parsedLimit = Number.parseInt(req.query.limit ?? '4', 10)
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 12) : 4
+
+    const rows = await db
+      .select({
+        id: schema.users.id,
+        firstName: schema.users.firstName,
+        lastName: schema.users.lastName,
+        city: schema.users.city,
+        bio: schema.teachers.bio,
+        specializations: schema.teachers.specializations,
+        languages: schema.teachers.languages,
+        verificationStatus: schema.teachers.verificationStatus,
+        rating: schema.teachers.rating,
+        reviewCount: schema.teachers.reviewCount,
+        totalSessions: count(schema.bookings.id),
+      })
+      .from(schema.teachers)
+      .innerJoin(schema.users, eq(schema.teachers.userId, schema.users.id))
+      .leftJoin(
+        schema.bookings,
+        and(
+          eq(schema.bookings.teacherId, schema.users.id),
+          eq(schema.bookings.status, 'completed'),
+        ),
+      )
+      .where(eq(schema.teachers.verificationStatus, status))
+      .groupBy(
+        schema.users.id,
+        schema.users.firstName,
+        schema.users.lastName,
+        schema.users.city,
+        schema.teachers.bio,
+        schema.teachers.specializations,
+        schema.teachers.languages,
+        schema.teachers.verificationStatus,
+        schema.teachers.rating,
+        schema.teachers.reviewCount,
+      )
+      .orderBy(desc(schema.teachers.rating), desc(schema.teachers.reviewCount), schema.users.firstName, schema.users.lastName)
+      .limit(limit)
+
+    return reply.send({
+      items: rows.map((row) => ({
+        ...row,
+        specializations: row.specializations ?? [],
+        languages: row.languages ?? [],
+        totalSessions: Number(row.totalSessions ?? 0),
+        reviewCount: Number(row.reviewCount ?? 0),
+      })),
+    })
+  })
+
   fastify.get<{
     Querystring: { parentId: string; status?: string }
   }>('/bookings', async (req, reply) => {
@@ -819,6 +875,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string } }>('/teachers/:id', async (req, reply) => {
     const { id } = req.params
+    if (!UUID_REGEX.test(id)) return reply.status(404).send({ error: 'Teacher not found' })
 
     const teacher = await db.query.teachers.findFirst({ where: eq(schema.teachers.userId, id) })
     if (!teacher) return reply.status(404).send({ error: 'Teacher not found' })

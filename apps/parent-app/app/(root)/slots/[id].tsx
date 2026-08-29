@@ -59,13 +59,14 @@ export default function SlotPickerScreen() {
   const insets = useSafeAreaInsets()
   const { session } = useAuth()
   const { enabled } = useLateOnboarding()
-  const { id, bookingId, teacherId, teacherName, bookingType, bookingTypeLabel } = useLocalSearchParams<{
+  const { id, bookingId, teacherId, teacherName, bookingType, bookingTypeLabel, flowId } = useLocalSearchParams<{
     id: string
     bookingId?: string
     teacherId?: string
     teacherName?: string
     bookingType?: string
     bookingTypeLabel?: string
+    flowId?: string
   }>()
   const bookingWindowStart = addDaysISO(APP_MODE === 'development' ? 0 : 1)
 
@@ -86,6 +87,12 @@ export default function SlotPickerScreen() {
       .map(([date]) => date)
       .sort()
   }, [slotsData])
+
+  useEffect(() => {
+    setStep(1)
+    setSelectedDate(null)
+    setSelectedSlotId(null)
+  }, [id, bookingId, teacherId, bookingType, bookingTypeLabel, flowId])
 
   useEffect(() => {
     if (availableDates.length === 0) {
@@ -132,8 +139,8 @@ export default function SlotPickerScreen() {
         pathname: '/(auth)/login',
         params: {
           redirectTo: isReschedule
-            ? `/(root)/payment/${id}?bookingId=${bookingId ?? ''}&slotId=${selectedSlot.id}&date=${selectedDate}&time=${encodeURIComponent(formatTime(selectedSlot.startTime))}&duration=${activity ? `${activity.sessionDurationMins}` : ''}&price=${activity?.pricePerSession ?? '0'}`
-            : `/(root)/select-child/${id}?slotId=${selectedSlot.id}&date=${selectedDate}&time=${encodeURIComponent(formatTime(selectedSlot.startTime))}&duration=${activity ? `${activity.sessionDurationMins}` : ''}&price=${activity?.pricePerSession ?? '0'}&teacherId=${teacherId ?? ''}&teacherName=${encodeURIComponent(teacherName ?? '')}&bookingType=${bookingType ?? ''}&bookingTypeLabel=${encodeURIComponent(bookingTypeLabel ?? getBookingTypeLabel(bookingType))}`,
+            ? `/(root)/payment/${id}?bookingId=${bookingId ?? ''}&slotId=${selectedSlot.id}&date=${selectedDate}&time=${encodeURIComponent(formatTime(selectedSlot.startTime))}&duration=${activity ? `${activity.sessionDurationMins}` : ''}&price=${activity?.pricePerSession ?? '0'}&flowId=${flowId ?? ''}`
+            : `/(root)/select-child/${id}?slotId=${selectedSlot.id}&date=${selectedDate}&time=${encodeURIComponent(formatTime(selectedSlot.startTime))}&duration=${activity ? `${activity.sessionDurationMins}` : ''}&price=${activity?.pricePerSession ?? '0'}&teacherId=${teacherId ?? ''}&teacherName=${encodeURIComponent(teacherName ?? '')}&bookingType=${bookingType ?? ''}&bookingTypeLabel=${encodeURIComponent(bookingTypeLabel ?? getBookingTypeLabel(bookingType))}&flowId=${flowId ?? ''}`,
         },
       })
       return
@@ -149,6 +156,7 @@ export default function SlotPickerScreen() {
           time: formatTime(selectedSlot.startTime),
           duration: activity ? `${activity.sessionDurationMins}` : '',
           price: activity?.pricePerSession ?? '0',
+          flowId: flowId ?? '',
         },
       })
       return
@@ -166,6 +174,7 @@ export default function SlotPickerScreen() {
         teacherName: teacherName ?? '',
         bookingType: bookingType ?? '',
         bookingTypeLabel: bookingTypeLabel ?? getBookingTypeLabel(bookingType),
+        flowId: flowId ?? '',
       },
     })
   }

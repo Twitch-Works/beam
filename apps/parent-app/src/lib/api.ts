@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://beam-api-xi.vercel.app'
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://beam-api-mu.vercel.app'
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession()
@@ -11,9 +11,13 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   if (session?.access_token) {
     headers['Authorization'] = `Bearer ${session.access_token}`
   }
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers })
+  const url = `${BASE_URL}${path}`
+  console.log("URL ", url, "OPTIONS ", options, "HEADERS ", headers);
+  const res = await fetch(url, { ...options, headers })
+  console.log("RES ", res);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
+    console.log("BODY ", body)
     throw new Error((body as any).error ?? `HTTP ${res.status}`)
   }
   return res.json()
@@ -36,18 +40,18 @@ export const parentApi = {
       radiusKm?: number
     }) => {
       const q = new URLSearchParams()
-      if (params?.category)  q.set('category',  params.category)
-      if (params?.ageGroup)  q.set('ageGroup',   params.ageGroup)
-      if (params?.search)    q.set('search',     params.search)
+      if (params?.category) q.set('category', params.category)
+      if (params?.ageGroup) q.set('ageGroup', params.ageGroup)
+      if (params?.search) q.set('search', params.search)
       if (params?.activityFormat) q.set('activityFormat', params.activityFormat)
       if (params?.venueType) q.set('venueType', params.venueType)
       if (params?.trialAvailable !== undefined) q.set('trialAvailable', String(params.trialAvailable))
       if (params?.timeOfDay) q.set('timeOfDay', params.timeOfDay)
-      if (params?.page)      q.set('page',       String(params.page))
-      if (params?.limit)     q.set('limit',      String(params.limit))
-      if (params?.lat != null) q.set('lat',      String(params.lat))
-      if (params?.lng != null) q.set('lng',      String(params.lng))
-      if (params?.radiusKm)  q.set('radiusKm',   String(params.radiusKm))
+      if (params?.page) q.set('page', String(params.page))
+      if (params?.limit) q.set('limit', String(params.limit))
+      if (params?.lat != null) q.set('lat', String(params.lat))
+      if (params?.lng != null) q.set('lng', String(params.lng))
+      if (params?.radiusKm) q.set('radiusKm', String(params.radiusKm))
       const qs = q.toString()
       return apiFetch<{ items: Activity[]; total: number; page: number; limit: number }>(
         `/activities${qs ? `?${qs}` : ''}`,
@@ -151,6 +155,12 @@ export const parentApi = {
       }),
   },
   teachers: {
+    list: (params?: { status?: 'pending' | 'verified' | 'rejected'; limit?: number }) => {
+      const q = new URLSearchParams()
+      if (params?.status) q.set('status', params.status)
+      if (params?.limit) q.set('limit', String(params.limit))
+      return apiFetch<{ items: TeacherSummary[] }>(`/teachers${q.toString() ? `?${q.toString()}` : ''}`)
+    },
     get: (teacherId: string) => apiFetch<Teacher>(`/teachers/${teacherId}`),
   },
   children: {
@@ -361,6 +371,20 @@ export type Teacher = {
     ageGroup: string
     imageUrl: string | null
   }[]
+}
+
+export type TeacherSummary = {
+  id: string
+  firstName: string
+  lastName: string | null
+  bio: string | null
+  city: string | null
+  verificationStatus: 'pending' | 'verified' | 'rejected'
+  specializations: string[]
+  languages?: string[]
+  totalSessions: number
+  rating: string
+  reviewCount: number
 }
 
 export type ActivityTeacher = {

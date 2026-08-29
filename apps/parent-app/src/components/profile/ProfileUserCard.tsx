@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
+import { View, Text, StyleSheet } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, fontSize, fontWeight, shadows } from '@/constants/theme'
 
@@ -26,9 +26,6 @@ export function ProfileUserCard({ fullName, initial, phone, city }: ProfileUserC
           </View>
         )}
       </View>
-      <TouchableOpacity style={styles.editBtn}>
-        <Ionicons name="pencil-outline" size={16} color={colors.primary} />
-      </TouchableOpacity>
     </View>
   )
 }
@@ -59,5 +56,4 @@ const styles = StyleSheet.create({
   userPhone: { fontSize: fontSize.body, color: colors.gray, fontFamily: 'Nunito-Regular' },
   userCityRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   userCity: { fontSize: fontSize.caption, color: colors.gray, fontFamily: 'Nunito-Regular' },
-  editBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.mint, alignItems: 'center', justifyContent: 'center' },
 })

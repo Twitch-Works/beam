@@ -29,6 +29,7 @@ export default function ReviewBookingScreen() {
     duration,
     price,
     childId,
+    flowId,
   } = useLocalSearchParams<{
     id: string
     bookingType?: string
@@ -41,6 +42,7 @@ export default function ReviewBookingScreen() {
     duration?: string
     price?: string
     childId: string
+    flowId?: string
   }>()
   const { data: activity } = useActivity(id ?? null)
   const { data: childrenData } = useChildren()
@@ -75,6 +77,7 @@ export default function ReviewBookingScreen() {
         duration: durationMins ? String(durationMins) : '',
         price: String(parsedPrice),
         childId,
+        flowId: flowId ?? '',
       },
     })
   }

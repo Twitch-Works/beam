@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, TextInput, Alert, Linking, Share,
@@ -8,6 +8,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
+import { useQueryClient } from '@tanstack/react-query'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import { useActivity } from '@/hooks/useActivities'
 import { useChildren } from '@/hooks/useChildren'
@@ -44,6 +45,7 @@ function shortId(): string {
 export default function PaymentScreen() {
   const insets = useSafeAreaInsets()
   const { enabled } = useLateOnboarding()
+  const queryClient = useQueryClient()
   const {
     id,
     bookingId: existingBookingId,
@@ -54,6 +56,7 @@ export default function PaymentScreen() {
     childId,
     bookingType,
     bookingTypeLabel,
+    flowId,
   } = useLocalSearchParams<{
     id: string
     bookingId?: string
@@ -64,6 +67,7 @@ export default function PaymentScreen() {
     childId?: string
     bookingType?: string
     bookingTypeLabel?: string
+    flowId?: string
   }>()
 
   const { user, parentUserId } = useAuth()
@@ -96,11 +100,24 @@ export default function PaymentScreen() {
       router.replace({
         pathname: '/(auth)/login',
         params: {
-          redirectTo: `/(root)/payment/${id}?bookingId=${existingBookingId ?? ''}&slotId=${slotId}&date=${date ?? ''}&time=${encodeURIComponent(time ?? '')}&price=${priceParam ?? ''}&childId=${childId ?? ''}&bookingType=${bookingType ?? ''}&bookingTypeLabel=${encodeURIComponent(resolvedBookingTypeLabel)}`,
+          redirectTo: `/(root)/payment/${id}?bookingId=${existingBookingId ?? ''}&slotId=${slotId}&date=${date ?? ''}&time=${encodeURIComponent(time ?? '')}&price=${priceParam ?? ''}&childId=${childId ?? ''}&bookingType=${bookingType ?? ''}&bookingTypeLabel=${encodeURIComponent(resolvedBookingTypeLabel)}&flowId=${flowId ?? ''}`,
         },
       })
     }
-  }, [bookingType, childId, date, enabled, existingBookingId, id, priceParam, resolvedBookingTypeLabel, slotId, time, user])
+  }, [bookingType, childId, date, enabled, existingBookingId, flowId, id, priceParam, resolvedBookingTypeLabel, slotId, time, user])
+
+  useEffect(() => {
+    setMethod('upi')
+    setCouponCode('')
+    setCouponApplied(false)
+    setCouponError('')
+    setDiscount(0)
+    setIsProcessing(false)
+    setCompletedBookingId(null)
+    setMockPaymentReference(null)
+    setPaymentState('idle')
+    setPaymentError('')
+  }, [flowId, id, existingBookingId, slotId, date, time, childId, bookingType])
 
   const total = sessionPrice - discount
   const confirmationCopy = `${selectedChild?.firstName ?? 'Your child'} is booked for ${activityTitle}. Please arrive 10 minutes early.`
@@ -134,6 +151,8 @@ export default function PaymentScreen() {
 
       if (existingBookingId) {
         const { booking } = await parentApi.bookings.reschedule(existingBookingId, parentUserId, slotId)
+        await queryClient.invalidateQueries({ queryKey: ['booking', existingBookingId, parentUserId] })
+        await queryClient.invalidateQueries({ queryKey: ['bookings'] })
         setCompletedBookingId(booking.id)
         setMockPaymentReference(null)
       } else {
@@ -144,6 +163,7 @@ export default function PaymentScreen() {
           discountCode: couponApplied ? couponCode : undefined,
           discountAmount: discount,
         })
+        await queryClient.invalidateQueries({ queryKey: ['bookings'] })
         setCompletedBookingId(booking.id)
         setMockPaymentReference(payment.gatewayPaymentId ?? payment.id)
       }

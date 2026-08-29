@@ -5,54 +5,80 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import { Avatar } from '@/components/Avatar'
-
-const MOCK_TEACHERS = [
-  {
-    id: '1',
-    firstName: 'Priya',
-    lastName: 'Menon',
-    specialty: 'Art & Craft',
-    yearsExp: 6,
-    rating: 4.9,
-    sessions: 340,
-    colorIndex: 0,
-  },
-  {
-    id: '2',
-    firstName: 'Rahul',
-    lastName: 'Sharma',
-    specialty: 'Music & Drums',
-    yearsExp: 8,
-    rating: 4.8,
-    sessions: 290,
-    colorIndex: 2,
-  },
-]
+import { Skeleton } from '@/components/Skeleton'
+import { useTeachers } from '@/hooks/useTeacher'
 
 export const VerifiedTeachersSection = React.memo(function VerifiedTeachersSection() {
+  const { data, isLoading } = useTeachers(4)
+  const teachers = data?.items ?? []
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        {[0, 1].map((index) => (
+          <View key={index} style={styles.row}>
+            <Skeleton width={50} height={50} radius={radius.avatar} />
+            <View style={{ flex: 1, gap: spacing.xs }}>
+              <Skeleton width="50%" height={16} />
+              <Skeleton width="70%" height={12} />
+              <Skeleton width="40%" height={12} />
+            </View>
+            <Skeleton width={72} height={38} radius={radius.button} />
+          </View>
+        ))}
+      </View>
+    )
+  }
+
+  if (teachers.length === 0) {
+    return (
+      <View style={styles.emptyState}>
+        <Ionicons name="school-outline" size={28} color={colors.border} />
+        <Text style={styles.emptyText}>Verified teacher profiles will appear here soon.</Text>
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
-      {MOCK_TEACHERS.map((teacher) => (
-        <TeacherRow key={teacher.id} teacher={teacher} />
+      {teachers.map((teacher, index) => (
+        <TeacherRow key={teacher.id} teacher={teacher} colorIndex={index % 4} />
       ))}
     </View>
   )
 })
 
-function TeacherRow({ teacher }: { teacher: (typeof MOCK_TEACHERS)[0] }) {
+function TeacherRow({
+  teacher,
+  colorIndex,
+}: {
+  teacher: {
+    id: string
+    firstName: string
+    lastName: string | null
+    specializations: string[]
+    rating: string
+    reviewCount: number
+    totalSessions: number
+  }
+  colorIndex: number
+}) {
   const handleBook = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     router.push(`/(root)/teacher/${teacher.id}`)
   }
+
+  const primarySpecialization = teacher.specializations[0] ?? 'Verified teacher'
+  const rating = Number.parseFloat(teacher.rating || '0')
 
   return (
     <View style={styles.row}>
       <View style={styles.avatarWrap}>
         <Avatar
           firstName={teacher.firstName}
-          lastName={teacher.lastName}
+          lastName={teacher.lastName ?? undefined}
           size={50}
-          colorIndex={teacher.colorIndex}
+          colorIndex={colorIndex}
         />
         <View style={styles.verifiedBadge}>
           <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
@@ -61,11 +87,14 @@ function TeacherRow({ teacher }: { teacher: (typeof MOCK_TEACHERS)[0] }) {
 
       <View style={styles.info}>
         <Text style={styles.name}>{teacher.firstName} {teacher.lastName}</Text>
-        <Text style={styles.specialty}>{teacher.specialty} · {teacher.yearsExp} yrs experience</Text>
+        <Text style={styles.specialty}>{primarySpecialization} · Verified by Beam</Text>
         <View style={styles.metaRow}>
           <Ionicons name="star" size={12} color={colors.yellow} />
-          <Text style={styles.rating}>{teacher.rating.toFixed(1)}</Text>
-          <Text style={styles.sessions}>{teacher.sessions} sessions</Text>
+          <Text style={styles.rating}>{rating > 0 ? rating.toFixed(1) : 'New'}</Text>
+          <Text style={styles.sessions}>{teacher.totalSessions} sessions</Text>
+          {teacher.reviewCount > 0 ? (
+            <Text style={styles.sessions}>{teacher.reviewCount} reviews</Text>
+          ) : null}
         </View>
       </View>
 
@@ -80,6 +109,21 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: spacing.md,
     gap: spacing.sm,
+  },
+  emptyState: {
+    marginHorizontal: spacing.md,
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.white,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  emptyText: {
+    fontSize: fontSize.body,
+    fontFamily: 'Nunito-Regular',
+    color: colors.gray,
+    textAlign: 'center',
   },
   row: {
     flexDirection: 'row',

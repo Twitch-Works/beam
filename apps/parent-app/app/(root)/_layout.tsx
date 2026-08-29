@@ -98,7 +98,9 @@ export default function RootLayout() {
       <Tabs.Screen name="payment/[id]" options={{ href: null }} />
       <Tabs.Screen name="reels" options={{ href: null, tabBarStyle: { display: 'none' } }} />
       <Tabs.Screen name="child/[id]" options={{ href: null }} />
+      <Tabs.Screen name="child/edit" options={{ href: null }} />
       <Tabs.Screen name="kids" options={{ href: null }} />
+      <Tabs.Screen name="profile/edit" options={{ href: null }} />
     </Tabs>
   )
 }

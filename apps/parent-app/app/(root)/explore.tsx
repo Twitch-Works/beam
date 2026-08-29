@@ -73,6 +73,7 @@ function formatNextSlot(date: string, startTime: string) {
 
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets()
+  const listRef = useRef<FlashList<ApiActivity>>(null)
   const { user } = useAuth()
   const { state, setLocation } = useLateOnboarding()
   const { category: categoryParam, search: searchParam } = useLocalSearchParams<{ category?: string; search?: string }>()
@@ -184,6 +185,20 @@ export default function ExploreScreen() {
     dateFilter !== 'Any',
   ].filter(Boolean).length
 
+  useEffect(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: false })
+  }, [
+    debouncedQuery,
+    activeCategory,
+    nearMe,
+    activeAgeGroup,
+    timeOfDay,
+    formatFilter,
+    settingFilter,
+    dateFilter,
+    viewMode,
+  ])
+
   const handlePress = useCallback(async (id: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     router.push(`/(root)/activity/${id}`)
@@ -275,7 +290,12 @@ export default function ExploreScreen() {
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickFilterRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.horizontalFilterScroll}
+        contentContainerStyle={styles.quickFilterRow}
+      >
         {[
           { key: 'This week', label: 'This week' },
           { key: 'Recurring', label: 'Recurring' },
@@ -307,7 +327,12 @@ export default function ExploreScreen() {
         })}
       </ScrollView>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterOptionRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.horizontalFilterScroll}
+        contentContainerStyle={styles.filterOptionRow}
+      >
         <FilterChip label={activeAgeGroup} active={activeAgeGroup !== 'Any'} onPress={() => {
           const currentIndex = ['Any', ...AGE_GROUPS].indexOf(activeAgeGroup as any)
           const next = ['Any', ...AGE_GROUPS][(currentIndex + 1) % (AGE_GROUPS.length + 1)]
@@ -327,7 +352,12 @@ export default function ExploreScreen() {
         }} />
       </ScrollView>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow} style={styles.catScroll}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.catScroll}
+        contentContainerStyle={styles.catRow}
+      >
         {CATEGORIES.map((c) => {
           const isActive = activeCategory === c.id
           return (
@@ -390,9 +420,11 @@ export default function ExploreScreen() {
         </View>
       ) : (
         <FlashList
+          ref={listRef}
           data={filteredActivities}
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
+          estimatedItemSize={148}
           refreshing={refreshing}
           onRefresh={onRefresh}
           contentContainerStyle={{ paddingBottom: insets.bottom + 100, paddingHorizontal: spacing.md, paddingTop: spacing.sm }}
@@ -428,6 +460,10 @@ function FilterChip({ label, active, onPress }: { label: string; active: boolean
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.lightGray },
+  horizontalFilterScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   headerBox: {
     backgroundColor: colors.white,
     paddingHorizontal: spacing.md,
@@ -511,13 +547,16 @@ const styles = StyleSheet.create({
   quickFilterRow: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
     gap: spacing.sm,
+    alignItems: 'center',
   },
   quickFilterChip: {
     backgroundColor: colors.lightGray,
     borderRadius: radius.avatar,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    alignSelf: 'center',
   },
   quickFilterChipActive: {
     backgroundColor: colors.primary,
@@ -533,7 +572,9 @@ const styles = StyleSheet.create({
   filterOptionRow: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
     gap: spacing.sm,
+    alignItems: 'center',
   },
   filterSelectorChip: {
     backgroundColor: colors.white,
@@ -542,6 +583,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
+    alignSelf: 'center',
   },
   filterSelectorChipActive: {
     backgroundColor: colors.mint,
@@ -556,21 +598,37 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   catScroll: { flexGrow: 0, flexShrink: 0 },
-  catRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm, alignItems: 'center' },
+  catRow: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+    alignItems: 'center',
+  },
   catChip: {
     flexDirection: 'row', alignItems: 'center', alignSelf: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     borderRadius: radius.avatar, borderWidth: 1.5, borderColor: 'transparent', gap: spacing.xs,
   },
   catLabel: { fontSize: fontSize.body, fontFamily: 'Nunito-SemiBold' },
-  resultBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.sm, gap: spacing.sm },
+  resultBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
   resultAccent: { width: 3, height: 14, borderRadius: 2 },
-  resultCount: { fontSize: fontSize.caption, color: colors.gray, fontFamily: 'Nunito-SemiBold' },
+  resultCount: {
+    flexShrink: 1,
+    fontSize: fontSize.caption,
+    color: colors.gray,
+    fontFamily: 'Nunito-SemiBold',
+  },
   wishlistChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginLeft: 'auto',
     paddingHorizontal: spacing.sm,
     paddingVertical: 5,
     borderRadius: radius.badge,
@@ -583,7 +641,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Nunito-SemiBold',
     color: colors.primary,
   },
-  viewToggle: { flexDirection: 'row', gap: spacing.xs },
+  viewToggle: { flexDirection: 'row', gap: spacing.xs, marginLeft: 'auto' },
   viewToggleChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 5,

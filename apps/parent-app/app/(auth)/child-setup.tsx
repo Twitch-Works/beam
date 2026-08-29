@@ -139,65 +139,65 @@ export default function ChildSetupScreen() {
 
     return (
       <View style={[styles.successContainer, { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.xl }]}>
-        {/* Avatar */}
-        {avatarIdx !== null ? (
-          <Image
-            source={{ uri: PLACEHOLDER_AVATARS[avatarIdx] }}
-            style={styles.successAvatar}
-            contentFit="cover"
-          />
-        ) : (
-          <View style={[styles.successAvatar, styles.successAvatarInitial]}>
-            <Text style={styles.successAvatarText}>{childName[0]?.toUpperCase()}</Text>
-          </View>
-        )}
-
-        <Text style={styles.successTitle}>Welcome, {childName}!</Text>
-        <Text style={styles.successSubtitle}>
-          {childName}'s profile has been created. Now let's find the perfect activities!
-        </Text>
-
-        {/* Interest pills */}
-        {selectedInterestLabels.length > 0 && (
-          <View style={styles.successPillsCard}>
-            <View style={styles.successPillsRow}>
-              {selectedInterestLabels.slice(0, 4).map((label, i) => {
-                const col = INTEREST_PILL_COLORS[i % INTEREST_PILL_COLORS.length]
-                return (
-                  <View key={label} style={[styles.successPill, { backgroundColor: col.bg }]}>
-                    <Text style={[styles.successPillText, { color: col.text }]}>{label}</Text>
-                  </View>
-                )
-              })}
+        <View style={styles.successContent}>
+          {avatarIdx !== null ? (
+            <Image
+              source={{ uri: PLACEHOLDER_AVATARS[avatarIdx] }}
+              style={styles.successAvatar}
+              contentFit="cover"
+            />
+          ) : (
+            <View style={[styles.successAvatar, styles.successAvatarInitial]}>
+              <Text style={styles.successAvatarText}>{childName[0]?.toUpperCase()}</Text>
             </View>
-          </View>
-        )}
+          )}
 
-        <View style={styles.successButtons}>
-          <TouchableOpacity
-            style={styles.outlineBtn}
-            onPress={() => {
-              if (typeof redirectTo === 'string' && redirectTo.length > 0) {
-                router.replace(redirectTo as any)
-                return
-              }
-              router.replace('/(root)/explore')
-            }}
-          >
-            <Text style={styles.outlineBtnText}>Browse Activities</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => {
-              if (typeof redirectTo === 'string' && redirectTo.length > 0) {
-                router.replace(redirectTo as any)
-                return
-              }
-              router.replace('/(root)/profile')
-            }}
-          >
-            <Text style={styles.primaryBtnText}>View Profile</Text>
-          </TouchableOpacity>
+          <Text style={styles.successTitle}>Welcome, {childName}!</Text>
+          <Text style={styles.successSubtitle}>
+            {`${childName}'s profile has been created. Now let's find the perfect activities!`}
+          </Text>
+
+          {selectedInterestLabels.length > 0 && (
+            <View style={styles.successPillsCard}>
+              <View style={styles.successPillsRow}>
+                {selectedInterestLabels.slice(0, 4).map((label, i) => {
+                  const col = INTEREST_PILL_COLORS[i % INTEREST_PILL_COLORS.length]
+                  return (
+                    <View key={label} style={[styles.successPill, { backgroundColor: col.bg }]}>
+                      <Text style={[styles.successPillText, { color: col.text }]}>{label}</Text>
+                    </View>
+                  )
+                })}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.successButtons}>
+            <TouchableOpacity
+              style={styles.outlineBtn}
+              onPress={() => {
+                if (typeof redirectTo === 'string' && redirectTo.length > 0) {
+                  router.replace(redirectTo as any)
+                  return
+                }
+                router.replace('/(root)/explore')
+              }}
+            >
+              <Text style={styles.outlineBtnText}>Browse Activities</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.successPrimaryBtn}
+              onPress={() => {
+                if (typeof redirectTo === 'string' && redirectTo.length > 0) {
+                  router.replace(redirectTo as any)
+                  return
+                }
+                router.replace('/(root)/profile')
+              }}
+            >
+              <Text style={styles.primaryBtnText}>View Profile</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     )
@@ -657,6 +657,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
+  },
+  successContent: {
+    width: '100%',
+    maxWidth: 420,
+    alignItems: 'center',
     gap: spacing.lg,
   },
   successAvatar: {
@@ -694,13 +699,30 @@ const styles = StyleSheet.create({
     borderRadius: radius.avatar,
   },
   successPillText: { fontSize: fontSize.body, fontFamily: 'Nunito-SemiBold' },
-  successButtons: { flexDirection: 'row', gap: spacing.md, width: '100%' },
+  successButtons: {
+    width: '100%',
+    gap: spacing.md,
+  },
   outlineBtn: {
-    flex: 1, height: 52,
+    width: '100%',
+    height: 52,
     borderWidth: 1.5, borderColor: colors.primary,
     borderRadius: radius.button,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: colors.white,
+  },
+  successPrimaryBtn: {
+    width: '100%',
+    height: 54,
+    backgroundColor: colors.primary,
+    borderRadius: radius.button,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 4,
   },
   outlineBtnText: { fontSize: fontSize.body, fontFamily: 'Nunito-Bold', color: colors.primary },
 })

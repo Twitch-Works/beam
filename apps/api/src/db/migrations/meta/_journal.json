@@ -15,6 +15,13 @@
       "when": 1789734600000,
       "tag": "0002_booking_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790000000003,
+      "tag": "0006_fill_activity_slots_aug_to_dec_2026",
+      "breakpoints": true
     }
   ]
 }

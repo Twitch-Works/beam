@@ -201,7 +201,10 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
               if (!booking.activityId) return
-              router.push({ pathname: `/(root)/slots/${booking.activityId}`, params: { bookingId: booking.id } })
+              router.push({
+                pathname: `/(root)/slots/${booking.activityId}`,
+                params: { bookingId: booking.id, flowId: String(Date.now()) },
+              })
             }}
             activeOpacity={0.8}
           >
@@ -247,7 +250,13 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
           {booking.feedbackSubmitted && positiveFeedback && booking.activityId ? (
             <TouchableOpacity
               style={[styles.actionBtn, styles.bookAgainBtn]}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(`/(root)/slots/${booking.activityId}`) }}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                router.push({
+                  pathname: `/(root)/slots/${booking.activityId}`,
+                  params: { flowId: String(Date.now()) },
+                })
+              }}
               activeOpacity={0.8}
             >
               <Text style={styles.bookAgainBtnText}>Book Again</Text>

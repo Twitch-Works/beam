@@ -12,6 +12,7 @@ import {
   Linking,
 } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
+import * as ExpoLinking from 'expo-linking'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Haptics from 'expo-haptics'
 import { Ionicons } from '@expo/vector-icons'
@@ -23,6 +24,8 @@ import { Button } from '@/components/Button'
 const MOCK_PHONE = '9999999999'
 const BYPASS_SUPABASE_EMAIL_SIGNUP =
   process.env.EXPO_PUBLIC_BYPASS_SUPABASE_EMAIL_SIGNUP === 'true'
+const APP_MODE = process.env.EXPO_PUBLIC_APP_MODE ?? 'development'
+const REQUIRES_EMAIL_VERIFICATION = APP_MODE === 'production'
 
 type AuthMethod = 'phone' | 'email'
 type EmailMode = 'login' | 'register'
@@ -167,10 +170,12 @@ export default function LoginScreen() {
         return
       }
 
+      const emailRedirectTo = ExpoLinking.createURL('/auth/callback')
       const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
         options: {
+          ...(REQUIRES_EMAIL_VERIFICATION ? { emailRedirectTo } : {}),
           data: {
             firstName: firstName.trim(),
             lastName: lastName.trim(),
@@ -208,9 +213,26 @@ export default function LoginScreen() {
         }
       }
 
-      if (!data.session) {
+      if (REQUIRES_EMAIL_VERIFICATION && !data.session) {
         Alert.alert('Verify your email', 'Your account is created. Verify your email, then sign in.')
         setEmailMode('login')
+        return
+      }
+
+      if (!REQUIRES_EMAIL_VERIFICATION && !data.session) {
+        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
+        })
+        if (loginError) {
+          Alert.alert(
+            'Registration complete, sign-in blocked',
+            'The account was created, but this environment still requires email confirmation. Disable email confirmation in the non-production Supabase project or switch to production verification flow.',
+          )
+          setEmailMode('login')
+          return
+        }
+        routeFromOnboardingStep(loginData.user?.user_metadata?.onboardingStep)
         return
       }
 
@@ -234,7 +256,9 @@ export default function LoginScreen() {
       >
         <View style={styles.header}>
           <Text style={styles.logo}>beam ✦</Text>
-          <Text style={styles.title}>Welcome back!</Text>
+          <Text style={styles.title}>
+            {isRegisterMode ? 'Create your account' : 'Welcome back!'}
+          </Text>
           <Text style={styles.subtitle}>
             {authMethod === 'phone'
               ? 'Enter your phone number to get a one-time code'
@@ -439,7 +463,9 @@ export default function LoginScreen() {
               : isRegisterMode
                 ? BYPASS_SUPABASE_EMAIL_SIGNUP
                   ? 'Supabase signup is bypassed. This only creates the parent record in Beam.'
-                  : 'Your parent profile will be created after registration'
+                  : REQUIRES_EMAIL_VERIFICATION
+                    ? 'Verify your email to finish registration and activate your parent profile.'
+                    : 'Your parent profile will be created and signed in immediately after registration.'
                 : 'Use your registered email to access your parent dashboard'}
           </Text>
         </View>
@@ -532,7 +558,7 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
     fontFamily: 'Nunito-SemiBold',
     color: colors.navy,
-    marginBottom: -spacing.sm,
+    marginBottom: spacing.xs,
   },
   inputRow: {
     flexDirection: 'row',

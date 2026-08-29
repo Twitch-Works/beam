@@ -38,6 +38,7 @@ export default function ChooseBookingTypeScreen() {
       pathname: '/(root)/slots/[id]',
       params: {
         id,
+        flowId: String(Date.now()),
         teacherId: teacherId ?? '',
         teacherName: teacherName ?? '',
         bookingType: activeType,
