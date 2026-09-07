@@ -14,16 +14,31 @@ function getRazorpay() {
   return _razorpay
 }
 
-export async function createOrder(bookingId: string) {
+export async function createOrder(bookingId: string, parentId: string) {
+  if (!KEY_ID || !KEY_SECRET) return err('RAZORPAY_NOT_CONFIGURED' as const)
+
   const payment = await repo.findPaymentByBookingId(bookingId)
   if (!payment) return err('PAYMENT_NOT_FOUND' as const)
+  if (payment.parentId !== parentId) return err('FORBIDDEN' as const)
+  if (payment.status === 'success') return err('ALREADY_PAID' as const)
 
-  const amountPaise = Math.round(parseFloat(payment.amount) * 100)
-  const order = await getRazorpay().orders.create({
-    amount:   amountPaise,
-    currency: 'INR',
-    receipt:  bookingId,
-  })
+  const amountPaise = Math.round(Number.parseFloat(payment.amount) * 100)
+  if (!Number.isFinite(amountPaise) || amountPaise < 100) {
+    return err('AMOUNT_TOO_LOW' as const)
+  }
+
+  let order: { id: string }
+  try {
+    order = await getRazorpay().orders.create({
+      amount:   amountPaise,
+      currency: 'INR',
+      receipt:  bookingId,
+    })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    console.error('[razorpay] orders.create failed', message)
+    return err('RAZORPAY_ERROR' as const)
+  }
 
   await repo.updatePaymentWithOrder(payment.id, order.id)
 
@@ -37,6 +52,7 @@ export async function createOrder(bookingId: string) {
 
 export async function verifyPayment(
   bookingId: string,
+  parentId: string,
   razorpayPaymentId: string,
   razorpayOrderId: string,
   razorpaySignature: string,
@@ -50,6 +66,7 @@ export async function verifyPayment(
 
   const payment = await repo.findPaymentByBookingId(bookingId)
   if (!payment) return err('PAYMENT_NOT_FOUND' as const)
+  if (payment.parentId !== parentId) return err('FORBIDDEN' as const)
 
   await repo.confirmPayment(payment.id, razorpayPaymentId, 'success')
   await repo.updateBookingStatus(bookingId, 'confirmed')

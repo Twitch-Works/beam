@@ -1,7 +1,7 @@
 import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import * as Haptics from 'expo-haptics'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import type { Activity as ApiActivity } from '@/lib/api'
@@ -27,7 +27,7 @@ export const ActivityCard = React.memo(function ActivityCard({ activity, onPress
           source={
             activity.imageUrl
               ? { uri: activity.imageUrl }
-              : require('../../../assets/images/icon.png')
+              : undefined
           }
           style={styles.cardImage}
           contentFit="cover"

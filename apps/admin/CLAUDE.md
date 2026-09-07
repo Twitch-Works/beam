@@ -446,6 +446,11 @@ SOS handling:
 - Extract metric formatting helpers for INR, percentages, and deltas
 - Keep review, disputes, and payout flows especially explicit
 
+## Images
+Use `<BeamImage>` from `@/components/BeamImage` instead of a raw `<img>` for content
+images. It swaps in `/public/beam-placeholder.png` (the Beam mark) whenever `src` is
+missing or fails to load, so tables and cards never show a broken-image icon.
+
 ## Reference note
 When designing admin screens, use the provided dashboard snapshot as the tone reference:
 - airy spacing

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Menu } from "lucide-react";
 import beamLogo from "../../assets/logo-beam.png";
 import { C, FB, FH, EB } from "./tokens";
+import { BeamImg } from "../BeamImg";
 
 const navLinks = [
   { label: "How it works", id: "how-it-works" },
@@ -67,7 +68,7 @@ export function Navbar({ scrolled, onWaitlistClick }: NavbarProps) {
         }}
       >
         <a href="#" style={{ textDecoration: "none" }}>
-          <img src={beamLogo} alt="Beam" className="nav-logo" style={{ height: 100, display: "block" }} />
+          <BeamImg src={beamLogo} alt="Beam" className="nav-logo" style={{ height: 100, display: "block" }} />
         </a>
 
         {/* Desktop links */}

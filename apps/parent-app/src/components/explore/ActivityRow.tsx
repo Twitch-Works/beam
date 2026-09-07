@@ -1,7 +1,7 @@
 import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import * as Haptics from 'expo-haptics'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, fontSize, fontWeight, shadows } from '@/constants/theme'
 import type { Activity as ApiActivity } from '@/lib/api'
@@ -38,7 +38,7 @@ export const ActivityRow = React.memo(function ActivityRow({
   return (
     <TouchableOpacity style={styles.rowCard} onPress={onPress} activeOpacity={0.9}>
       <Image
-        source={item.imageUrl ? { uri: item.imageUrl } : require('../../../assets/images/icon.png')}
+        source={item.imageUrl ? { uri: item.imageUrl } : undefined}
         style={styles.rowImage}
         contentFit="cover"
       />

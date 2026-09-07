@@ -11,7 +11,7 @@ import {
   RefreshControl,
   Linking,
 } from 'react-native'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -502,7 +502,7 @@ export default function BookingDetailScreen() {
           {/* Activity image + title */}
           <View style={styles.heroCard}>
             <Image
-              source={booking.activityImage ? { uri: booking.activityImage } : require('../../../assets/images/icon.png')}
+              source={booking.activityImage ? { uri: booking.activityImage } : undefined}
               style={styles.heroImage}
               contentFit="cover"
             />

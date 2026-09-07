@@ -1,6 +1,7 @@
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import { Image, type ImageSource } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
+import type { ImageSource } from 'expo-image'
 import { colors, spacing, fontSize, fontWeight } from '@/constants/theme'
 
 interface EmptyStateProps {

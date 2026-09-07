@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
+import { BeamImage } from '@/components/BeamImage'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -41,7 +42,7 @@ export default function LoginPage() {
 
         {/* Left brand panel */}
         <div className="auth-split__brand">
-          <img src="/beam-admin.png" alt="Beam" className="auth-split__logo" />
+          <BeamImage src="/beam-admin.png" alt="Beam" className="auth-split__logo" />
 
           <div className="auth-split__body">
             <h1 className="auth-split__title">Your command<br />center for Beam</h1>

@@ -1,8 +1,12 @@
 # CLAUDE.md — Beam Landing Page (Coming Soon / Waitlist)
 
-> This file contains all instructions for Claude Code to build the Beam landing page.
-> The product is NOT yet live. The landing page goal is to collect waitlist signups and impress early visitors.
-> Build a single static HTML file (`index.html`) with embedded CSS and vanilla JS. No frameworks required.
+> This file contains the original brief for the Beam landing page.
+> NOTE: the landing page is now a Vite + React app under `src/` (not a single `index.html`).
+> The brand/palette/copy guidance below still applies; the "single HTML file" mechanics do not.
+>
+> Images: use `<BeamImg>` from `src/components/BeamImg.tsx` instead of a raw `<img>`.
+> It falls back to `src/assets/splash-icon-solid.png` (the Beam mark) on a missing or
+> broken `src`.
 
 ---
 

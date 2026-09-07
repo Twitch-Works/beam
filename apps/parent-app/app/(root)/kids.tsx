@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -274,7 +274,7 @@ export default function KidsScreen() {
                         activeOpacity={0.88}
                       >
                         <Image
-                          source={activity.imageUrl ? { uri: activity.imageUrl } : require('../../assets/images/icon.png')}
+                          source={activity.imageUrl ? { uri: activity.imageUrl } : undefined}
                           style={styles.recImage}
                           contentFit="cover"
                         />

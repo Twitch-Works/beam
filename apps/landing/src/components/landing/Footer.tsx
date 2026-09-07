@@ -2,6 +2,7 @@ import beamLogo from "../../assets/logo-beam.png";
 import starIcon from "../../assets/star.png";
 import { Instagram, Facebook, Youtube } from "lucide-react";
 import { C, FB, FH } from "./tokens";
+import { BeamImg } from "../BeamImg";
 
 const footerCols = [
   {
@@ -92,7 +93,7 @@ export function Footer() {
         >
           {/* Brand col */}
           <div className="footer-brand" style={{ flex: 1.5, minWidth: 200 }}>
-            <img src={beamLogo} alt="Beam" className="footer-logo" style={{ height: 82, display: "block", marginBottom: 8 }} />
+            <BeamImg src={beamLogo} alt="Beam" className="footer-logo" style={{ height: 82, display: "block", marginBottom: 8 }} />
             <p style={{
               fontFamily: FB, fontSize: 14, color: LINK_COLOR,
               lineHeight: 1.7, margin: "0 0 20px", maxWidth: 220,

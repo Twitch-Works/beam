@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import homeHero from "../../assets/home-hero.png";
 import starIcon from "../../assets/star.png";
 import { C, FB, FH } from "./tokens";
+import { BeamImg } from "../BeamImg";
 
 interface HeroSectionProps {
   email: string;
@@ -83,7 +84,7 @@ export function HeroSection({ email, setEmail, submitted, setSubmitted }: HeroSe
             className="ha"
             style={{ animationDelay: ".16s", fontFamily: FH, fontWeight: 900, fontSize: "clamp(40px,5vw,62px)", lineHeight: 1.07, margin: "0 0 22px" }}
           >
-            <span style={{ color: C.teal }}>nurture</span> every child. <img src={starIcon} alt="" aria-hidden="true" style={{ height: "1.1em", display: "inline-block", verticalAlign: "middle", position: "relative", top: "-0.12em" }} />
+            <span style={{ color: C.teal }}>nurture</span> every child. <BeamImg src={starIcon} alt="" aria-hidden="true" style={{ height: "1.1em", display: "inline-block", verticalAlign: "middle", position: "relative", top: "-0.12em" }} />
           </h1>
 
           <p
@@ -145,7 +146,7 @@ export function HeroSection({ email, setEmail, submitted, setSubmitted }: HeroSe
           transition={{ duration: 0.85, delay: 0.25, type: "spring", stiffness: 72, damping: 18 }}
           style={{ flex: 1, minWidth: 280, display: "flex", justifyContent: "center" }}
         >
-          <img className="hero-img" src={homeHero} alt="Beam app screenshot" style={{ maxWidth: "100%", display: "block" }} />
+          <BeamImg className="hero-img" src={homeHero} alt="Beam app screenshot" style={{ maxWidth: "100%", display: "block" }} />
         </motion.div>
       </div>
     </section>

@@ -5,6 +5,7 @@ import stepBook from "../../assets/steps copy.png";
 import stepGrow from "../../assets/steps copy 2.png";
 import { C, FB, FH } from "./tokens";
 import { Reveal } from "./Reveal";
+import { BeamImg } from "../BeamImg";
 
 const steps = [
   {
@@ -107,7 +108,7 @@ export function HowItWorks() {
           letterSpacing: 1.5,
           margin: "0 0 16px",
         }}>
-          <img src={starIcon} alt="" aria-hidden="true" style={{ height: 13 }} /> How It Works
+          <BeamImg src={starIcon} alt="" aria-hidden="true" style={{ height: 13 }} /> How It Works
         </p>
         <h2 style={{
           fontFamily: FH, fontWeight: 900,
@@ -146,7 +147,7 @@ export function HowItWorks() {
                 </div>
 
                 {/* Step Illustration */}
-                <img
+                <BeamImg
                   src={step.img}
                   alt={step.title}
                   style={{ width: 180, height: 170, objectFit: "contain", marginBottom: 24 }}

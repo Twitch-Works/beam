@@ -46,8 +46,29 @@ apps/parent-app/
 │   ├── dashboard/
 │   ├── kids/
 │   └── profile/
-└── src/components/              # App-specific only — shared goes in @beam/ui-native
+├── src/components/              # App-specific only — shared goes in @beam/ui-native
+│   ├── BeamImage.tsx           # <Image> wrapper — falls back to the Beam mark on missing/broken src
+│   ├── BootGate.tsx             # cold-start orchestrator: animated splash → intro → app
+│   ├── splash/AnimatedSplash.tsx  # animated beam-logo splash over the app while it boots
+│   └── onboarding/IntroCarousel.tsx  # 4-slide intro shown to signed-out users
+└── assets/images/
+    ├── beam-logo.png          # brand lockup (copied from apps/landing) — splash mark
+    ├── beam-star.png          # kawaii star (copied from apps/landing) — app icon + accents
+    └── splash-icon-solid.png  # brand lockup on transparent — global image placeholder
 ```
+
+## Images
+
+Never use `expo-image`'s `<Image>` directly for content images. Import
+`{ BeamImage as Image } from '@/components/BeamImage'` — it renders
+`splash-icon-solid.png` whenever the source is null / empty / fails to load, so
+there are no blank boxes. Pass a plain `{ uri }` (or `undefined`) and let the
+wrapper handle the fallback; don't add ad-hoc `require('…/icon.png')` fallbacks.
+
+Icons/splash PNGs (`icon.png`, `android-icon-foreground.png`, `splash-icon.png`, …) are
+generated from `beam-star.png` / `beam-logo.png` by `scripts/build-icons.sh` (needs
+`rsvg-convert`). Native splash bg is `#1787A6`; the logo sits on a round white badge
+so the teal wordmark stays legible.
 
 ---
 
@@ -64,10 +85,27 @@ Home · Explore · Bookings · Kids · Profile
 
 ---
 
+## Boot Flow
+
+```
+Native splash → AnimatedSplash → [IntroCarousel — signed-out only] → app
+```
+
+- `BootGate` (mounted in `app/_layout.tsx`) keeps `AnimatedSplash` on screen until
+  auth resolves, then reveals the app underneath.
+- The 4-slide `IntroCarousel` shows whenever there is no session (or mock session).
+  Logged-in users go straight to the app. Completing / skipping it is session-local
+  (not persisted) and just advances to the sign-in flow — it comes back on the next
+  cold start if the user is still signed out.
+- App icon = `beam-star.png`, splash mark = `beam-logo.png` (both copied from
+  `apps/landing/src/assets/`). `scripts/build-icons.sh` (needs `rsvg-convert`)
+  regenerates `assets/images/` (icon, adaptive foreground, splash-icon, monochrome,
+  favicon). Native splash bg is `#1787A6`; the logo renders on a round white badge.
+
 ## Auth Flow
 
 ```
-Splash → Phone Entry → OTP Verify → Parent Profile → Child Profile → Home
+Phone Entry → OTP Verify → Parent Profile → Child Profile → Home
 ```
 
 - Auth handled by Supabase Auth (OTP → JWT with role: parent)
@@ -157,6 +195,28 @@ SessionUrgencyBadge // "starts in 2h" indicator
 ```
 Activity Detail → Teacher Profile (modal) → Slot Picker → Cart → Payment → Confirmation
 ```
+
+### Payment (Razorpay Standard Checkout)
+
+`app/(root)/payment/[id].tsx` → `handlePay()`:
+
+1. `parentApi.bookings.create(...)` → `{ booking, payment }` (creates a `pending` payment row).
+   If `payment.status === 'success'` — the dev backend auto-captures unless
+   `RAZORPAY_TEST_CHECKOUT=true` — → straight to the confirmation screen, no Razorpay sheet.
+2. `parentApi.payments.createOrder(bookingId, parentUserId)` → `{ orderId, amount, currency, keyId }`,
+   then `setRazorpayOrder(...)` opens `<RazorpayCheckout>`.
+3. `src/components/RazorpayCheckout.tsx` — a full-screen `<Modal>` + `<WebView>` that
+   runs Razorpay **Standard Web Checkout** (`checkout.js`). Pure JS, so it works in
+   **Expo Go** and dev/release builds alike — no native SDK. It `postMessage`s back
+   `success | cancelled | failed` (helpers in `src/lib/razorpay.ts`).
+4. `handleRazorpayResult` → `parentApi.payments.verifyPayment(bookingId, parentUserId,
+   { razorpayPaymentId, razorpayOrderId, razorpaySignature })` — the API re-checks
+   the HMAC and flips the payment to `success` + the booking to `confirmed`.
+
+The payment endpoints aren't JWT-guarded (same as `/bookings`) — they take `parentId`
+in the body and verify the payment belongs to that parent. The `key_secret` never
+leaves the API; the app only gets the public `keyId` from the create-order response.
+`pendingBookingId` keeps a retry on the same booking instead of creating a duplicate.
 
 Slot locking: When parent opens SlotPicker, call api.scheduling.lockSlot. Release on back navigation or timeout (5 min TTL). Never hold a lock without releasing.
 
@@ -278,7 +338,8 @@ Use ErrorState and EmptyState from @beam/ui-native. Never show raw error message
 "@shopify/flash-list": "^1.6.0",
 "@tanstack/react-query": "^5.0.0",
 "socket.io-client": "^4.7.0",
-"@supabase/supabase-js": "^2.0.0"
+"@supabase/supabase-js": "^2.0.0",
+"react-native-webview": "13.15.0"   // Razorpay Standard Web Checkout
 ```
 
 ---

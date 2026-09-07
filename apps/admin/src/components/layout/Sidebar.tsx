@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
 import type { AdminSession } from '@/lib/admin-access'
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
+import { BeamImage } from '@/components/BeamImage'
 
 /* ─── Context ─────────────────────────────────────────────────────────────── */
 
@@ -96,7 +97,7 @@ export function AdminSidebar({ session }: { session: AdminSession }) {
       >
         {/* Brand + toggle row */}
         <div className="sidebar__header">
-          {!collapsed && <img src="/beam-admin.png" alt="Beam Admin" className="sidebar__logo" />}
+          {!collapsed && <BeamImage src="/beam-admin.png" alt="Beam Admin" className="sidebar__logo" />}
           <button
             className="sidebar__toggle"
             onClick={toggle}

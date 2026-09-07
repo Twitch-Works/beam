@@ -1,6 +1,6 @@
 import React from 'react'
 import { View, Text, StyleSheet } from 'react-native'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 
@@ -21,7 +21,7 @@ export function ActivitySummaryBar({
   return (
     <View style={styles.card}>
       <Image
-        source={imageUrl ? { uri: imageUrl } : require('../../../assets/images/icon.png')}
+        source={imageUrl ? { uri: imageUrl } : undefined}
         style={styles.thumbnail}
         contentFit="cover"
       />

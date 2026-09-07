@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, ActivityIndicator } from 'react-native'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
@@ -142,7 +142,7 @@ export const BookingCard = React.memo(function BookingCard({ booking }: BookingC
         activeOpacity={0.85}
       >
         <Image
-          source={booking.activityImage ? { uri: booking.activityImage } : require('../../../assets/images/icon.png')}
+          source={booking.activityImage ? { uri: booking.activityImage } : undefined}
           style={styles.thumb}
           contentFit="cover"
         />

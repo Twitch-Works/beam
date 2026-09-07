@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, TextInput, Alert, Linking, Share,
 } from 'react-native'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -15,6 +15,8 @@ import { useChildren } from '@/hooks/useChildren'
 import { useAuth } from '@/lib/AuthContext'
 import { useLateOnboarding } from '@/lib/LateOnboardingContext'
 import { parentApi } from '@/lib/api'
+import type { RazorpayOrder, RazorpayResult } from '@/lib/razorpay'
+import { RazorpayCheckout } from '@/components/RazorpayCheckout'
 import { BookingWizardHeader } from '@/components/booking/BookingWizardHeader'
 import { ActivitySummaryBar } from '@/components/booking/ActivitySummaryBar'
 import {
@@ -70,7 +72,7 @@ export default function PaymentScreen() {
     flowId?: string
   }>()
 
-  const { user, parentUserId } = useAuth()
+  const { user, parentUserId, parentProfile } = useAuth()
   const { data: activityData } = useActivity(id ?? null)
   const { data: childrenData } = useChildren()
   const selectedChild = childId
@@ -81,16 +83,21 @@ export default function PaymentScreen() {
   const wizardStep = isReschedule ? 2 : 5
   const resolvedBookingTypeLabel = bookingTypeLabel ?? getBookingTypeLabel(bookingType)
 
-  const sessionPrice  = priceParam ? parseFloat(priceParam) : (activityData ? parseFloat(activityData.pricePerSession) : 0)
-  const activity      = activityData
+  const sessionPrice = priceParam ? parseFloat(priceParam) : (activityData ? parseFloat(activityData.pricePerSession) : 0)
+  const activity = activityData
   const activityTitle = activity?.title ?? '—'
-  const [method, setMethod]           = useState<PaymentMethod>('upi')
-  const [couponCode, setCouponCode]   = useState('')
+  const [method, setMethod] = useState<PaymentMethod>('upi')
+  const [couponCode, setCouponCode] = useState('')
   const [couponApplied, setCouponApplied] = useState(false)
   const [couponError, setCouponError] = useState('')
-  const [discount, setDiscount]       = useState(0)
+  const [discount, setDiscount] = useState(0)
   const [isProcessing, setIsProcessing] = useState(false)
   const [completedBookingId, setCompletedBookingId] = useState<string | null>(null)
+  // Booking is created before the Razorpay sheet opens; keep its id so a retry
+  // re-uses it instead of creating a duplicate booking / re-locking the slot.
+  const [pendingBookingId, setPendingBookingId] = useState<string | null>(null)
+  const [razorpayOrder, setRazorpayOrder] = useState<RazorpayOrder | null>(null)
+  const [paymentReference, setPaymentReference] = useState<string | null>(null)
   const [mockPaymentReference, setMockPaymentReference] = useState<string | null>(null)
   const [paymentState, setPaymentState] = useState<PaymentState>('idle')
   const [paymentError, setPaymentError] = useState<string>('')
@@ -115,6 +122,9 @@ export default function PaymentScreen() {
     setIsProcessing(false)
     setCompletedBookingId(null)
     setMockPaymentReference(null)
+    setPendingBookingId(null)
+    setRazorpayOrder(null)
+    setPaymentReference(null)
     setPaymentState('idle')
     setPaymentError('')
   }, [flowId, id, existingBookingId, slotId, date, time, childId, bookingType])
@@ -139,7 +149,7 @@ export default function PaymentScreen() {
     }
   }
 
-  const handlePay = async () => {
+  const handleMockPay = async () => {
     if (isProcessing || !user || !parentUserId || !id) return
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     setIsProcessing(true)
@@ -170,6 +180,111 @@ export default function PaymentScreen() {
     } catch (err: any) {
       setPaymentState('failed')
       setPaymentError(err?.description ?? err?.message ?? 'Payment did not go through. Your child and slot selection are still saved.')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handlePay = async () => {
+    if (isProcessing || !user || !parentUserId || !id) return
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    setIsProcessing(true)
+    setPaymentState('idle')
+    setPaymentError('')
+    try {
+      if (!selectedChild?.id) { Alert.alert('No child selected', 'Go back and choose the child for this booking.'); return }
+      if (!slotId) { Alert.alert('Missing slot', 'Go back and select a slot.'); return }
+
+      // ── Reschedule: no payment involved ──
+      if (existingBookingId) {
+        const { booking } = await parentApi.bookings.reschedule(existingBookingId, parentUserId, slotId)
+        await queryClient.invalidateQueries({ queryKey: ['booking', existingBookingId, parentUserId] })
+        await queryClient.invalidateQueries({ queryKey: ['bookings'] })
+        setCompletedBookingId(booking.id)
+        setPaymentReference(null)
+        return
+      }
+
+      // ── New booking + Razorpay payment ──
+      // 1. Create the booking (+ pending payment row) once; a retry re-uses it.
+      let bookingId = pendingBookingId
+      if (!bookingId) {
+        const { booking, payment } = await parentApi.bookings.create({
+          parentId: parentUserId, childId: selectedChild.id,
+          activityId: id, slotId,
+          totalAmount: total,
+          discountCode: couponApplied ? couponCode : undefined,
+          discountAmount: discount,
+        })
+        await queryClient.invalidateQueries({ queryKey: ['bookings'] })
+        bookingId = booking.id
+        setPendingBookingId(booking.id)
+
+        // The dev/test backend auto-captures the payment — no Razorpay sheet needed.
+        if (payment.status === 'success') {
+          setCompletedBookingId(booking.id)
+          setPaymentReference(payment.gatewayPaymentId ?? null)
+          return
+        }
+      }
+
+      // 2. Create the Razorpay order on the API, then open the WebView checkout.
+      //    The result is handled in handleRazorpayResult (below).
+      const order = await parentApi.payments.createOrder(bookingId, parentUserId)
+      setRazorpayOrder({
+        keyId: order.keyId,
+        orderId: order.orderId,
+        amount: order.amount,
+        currency: order.currency,
+        description: activityTitle,
+        prefill: {
+          name: parentProfile
+            ? [parentProfile.firstName, parentProfile.lastName].filter(Boolean).join(' ') || undefined
+            : undefined,
+          email: parentProfile?.email ?? user.email ?? undefined,
+          contact: parentProfile?.phone ?? (user.phone as string | undefined) ?? undefined,
+        },
+      })
+    } catch (err: any) {
+      setPaymentState('failed')
+      setPaymentError(err?.description ?? err?.message ?? 'Payment did not go through. Your child and slot selection are still saved.')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleRazorpayResult = async (result: RazorpayResult) => {
+    setRazorpayOrder(null)
+
+    if (result.status === 'cancelled') {
+      // Sheet dismissed — stay on Review & Pay; booking + order kept for retry.
+      return
+    }
+    if (result.status === 'failed') {
+      setPaymentState('failed')
+      setPaymentError(result.message)
+      return
+    }
+    if (!pendingBookingId || !parentUserId) return
+
+    setIsProcessing(true)
+    try {
+      // Verify the signature server-side (marks payment success + booking confirmed in the DB).
+      await parentApi.payments.verifyPayment(pendingBookingId, parentUserId, {
+        razorpayPaymentId: result.data.razorpay_payment_id,
+        razorpayOrderId: result.data.razorpay_order_id,
+        razorpaySignature: result.data.razorpay_signature,
+      })
+      await queryClient.invalidateQueries({ queryKey: ['bookings'] })
+      await queryClient.invalidateQueries({ queryKey: ['booking', pendingBookingId, parentUserId] })
+      setCompletedBookingId(pendingBookingId)
+      setPaymentReference(result.data.razorpay_payment_id)
+    } catch (err: any) {
+      setPaymentState('failed')
+      setPaymentError(
+        err?.message ??
+        'We could not confirm your payment. If money was deducted it will be refunded automatically.',
+      )
     } finally {
       setIsProcessing(false)
     }
@@ -220,7 +335,7 @@ export default function PaymentScreen() {
           totalSteps={wizardLabels.length}
           stepLabels={wizardLabels}
           title="Confirmation"
-          onBack={() => {}}
+          onBack={() => { }}
         />
         <ScrollView contentContainerStyle={[styles.successScroll, { paddingBottom: insets.bottom + 100 }]}>
           {/* Check icon */}
@@ -234,14 +349,14 @@ export default function PaymentScreen() {
           <Text style={styles.successSubtitle}>
             {existingBookingId
               ? "Your new slot is pending teacher confirmation."
-              : "Your session has been booked with a mock payment capture. You'll receive a confirmation shortly."}
+              : "Your payment went through and the session is booked. You'll receive a confirmation shortly."}
           </Text>
 
           {/* Receipt card */}
           <View style={styles.receiptCard}>
             <View style={styles.receiptHeader}>
               <Image
-                source={activity?.imageUrl ? { uri: activity.imageUrl } : require('../../../assets/images/icon.png')}
+                source={activity?.imageUrl ? { uri: activity.imageUrl } : undefined}
                 style={styles.receiptThumb}
                 contentFit="cover"
               />
@@ -254,10 +369,10 @@ export default function PaymentScreen() {
             {[
               ...(!isReschedule ? [{ label: 'Booking Type', value: resolvedBookingTypeLabel }] : []),
               { label: 'Date & Time', value: `${date ? formatDisplayDate(date) : '—'}, ${time ?? '—'}` },
-              { label: 'Location',    value: locationText },
+              { label: 'Location', value: locationText },
               { label: 'Amount Paid', value: `₹${total}` },
-              ...(mockPaymentReference ? [{ label: 'Mock Payment', value: mockPaymentReference }] : []),
-              { label: 'Booking ID',  value: shortId() },
+              ...(paymentReference ? [{ label: 'Payment ID', value: paymentReference }] : []),
+              { label: 'Booking ID', value: shortId() },
             ].map(row => (
               <View key={row.label} style={styles.receiptRow}>
                 <Text style={styles.receiptLabel}>{row.label}</Text>
@@ -357,7 +472,7 @@ export default function PaymentScreen() {
           <TouchableOpacity style={styles.secondaryCtaBtn} onPress={handleSupport} activeOpacity={0.88}>
             <Text style={styles.secondaryCtaText}>Support</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.ctaBtn} onPress={handlePay} activeOpacity={0.88}>
+          <TouchableOpacity style={styles.ctaBtn} onPress={async () => { if (method === "card") { await handlePay() } else { await handleMockPay() } }} activeOpacity={0.88}>
             <Text style={styles.ctaBtnText}>Retry payment</Text>
           </TouchableOpacity>
         </View>
@@ -390,10 +505,10 @@ export default function PaymentScreen() {
           <Text style={styles.cardTitle}>{existingBookingId ? 'Reschedule Summary' : 'Payment Review'}</Text>
           {[
             ...(!existingBookingId ? [{ icon: 'layers-outline', label: 'Booking type', value: resolvedBookingTypeLabel }] : []),
-            { icon: 'calendar-outline',  label: 'Date',  value: date ? formatDisplayDate(date) + ' ' + new Date().getFullYear() : '—' },
-            { icon: 'time-outline',      label: 'Time',  value: time ?? '—' },
-            { icon: 'home-outline',      label: 'Mode',  value: activity?.deliveryMode === 'online' ? 'Online' : 'At Home' },
-            { icon: 'person-outline',    label: 'Child', value: selectedChild ? `${selectedChild.firstName} (${getAge(selectedChild.dateOfBirth)} yrs)` : '—' },
+            { icon: 'calendar-outline', label: 'Date', value: date ? formatDisplayDate(date) + ' ' + new Date().getFullYear() : '—' },
+            { icon: 'time-outline', label: 'Time', value: time ?? '—' },
+            { icon: 'home-outline', label: 'Mode', value: activity?.deliveryMode === 'online' ? 'Online' : 'At Home' },
+            { icon: 'person-outline', label: 'Child', value: selectedChild ? `${selectedChild.firstName} (${getAge(selectedChild.dateOfBirth)} yrs)` : '—' },
           ].map(row => (
             <View key={row.label} style={styles.summaryRow}>
               <Ionicons name={row.icon as any} size={16} color={colors.gray} />
@@ -451,17 +566,17 @@ export default function PaymentScreen() {
                 style={[styles.methodRow, active && styles.methodRowActive]}
                 onPress={async () => { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setMethod(m.id) }}
                 activeOpacity={0.8}
-                >
-                  <View style={[styles.methodIcon, active && styles.methodIconActive]}>
-                    <Ionicons name={m.icon} size={18} color={active ? colors.white : colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.methodLabel}>{m.label}</Text>
-                    <Text style={styles.methodSub}>{m.sub}</Text>
-                  </View>
-                  <View style={[styles.radio, active && styles.radioActive]}>
-                    {active && <View style={styles.radioDot} />}
-                  </View>
+              >
+                <View style={[styles.methodIcon, active && styles.methodIconActive]}>
+                  <Ionicons name={m.icon} size={18} color={active ? colors.white : colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.methodLabel}>{m.label}</Text>
+                  <Text style={styles.methodSub}>{m.sub}</Text>
+                </View>
+                <View style={[styles.radio, active && styles.radioActive]}>
+                  {active && <View style={styles.radioDot} />}
+                </View>
               </TouchableOpacity>
             )
           })}
@@ -473,9 +588,9 @@ export default function PaymentScreen() {
 
         {/* Price breakdown */}
         <View style={[styles.card, { gap: spacing.sm }]}>
-          <PriceRow label="Session fee"   value={`₹${sessionPrice.toFixed(0)}`} />
+          <PriceRow label="Session fee" value={`₹${sessionPrice.toFixed(0)}`} />
           {discount > 0 && <PriceRow label="Discount" value={`−₹${discount}`} valueColor={colors.success} />}
-          <PriceRow label="Platform fee"  value="₹0" />
+          <PriceRow label="Platform fee" value="₹0" />
           <View style={styles.divider} />
           <PriceRow label="Total" value={`₹${total}`} bold primary />
         </View>
@@ -484,7 +599,7 @@ export default function PaymentScreen() {
         <View style={styles.trustLine}>
           <Ionicons name="shield-checkmark-outline" size={14} color={colors.gray} />
           <Text style={styles.trustText}>
-            Mock payment only · teacher confirmation required · {getBookingCancellationCopy(date)}
+            Secured by Razorpay · teacher confirmation required · {getBookingCancellationCopy(date)}
           </Text>
         </View>
       </ScrollView>
@@ -493,7 +608,7 @@ export default function PaymentScreen() {
       <View style={[styles.stickyBottom, { paddingBottom: insets.bottom + spacing.sm }]}>
         <TouchableOpacity
           style={[styles.ctaBtn, isProcessing && { opacity: 0.7 }]}
-          onPress={handlePay}
+          onPress={async () => { if (method === "card") { await handlePay() } else { await handleMockPay() } }}
           disabled={isProcessing}
           activeOpacity={0.88}
         >
@@ -502,6 +617,9 @@ export default function PaymentScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {method === "card" &&
+        <RazorpayCheckout order={razorpayOrder} onResult={handleRazorpayResult} />}
     </View>
   )
 }

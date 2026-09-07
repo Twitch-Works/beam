@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -81,7 +81,7 @@ export default function ChildGrowthScreen() {
         {/* ── Hero ── */}
         <View style={styles.hero}>
           <Image
-            source={imageUrl ? { uri: imageUrl } : require('../../../assets/images/icon.png')}
+            source={imageUrl ? { uri: imageUrl } : undefined}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
           />

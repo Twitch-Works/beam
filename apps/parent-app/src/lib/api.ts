@@ -144,14 +144,18 @@ export const parentApi = {
       }),
   },
   payments: {
-    createOrder: (bookingId: string) =>
+    createOrder: (bookingId: string, parentId: string) =>
       apiFetch<{ orderId: string; amount: number; currency: string; keyId: string }>(
-        '/payments/orders', { method: 'POST', body: JSON.stringify({ bookingId }) },
+        '/payments/orders', { method: 'POST', body: JSON.stringify({ bookingId, parentId }) },
       ),
-    verifyPayment: (bookingId: string, body: { razorpayPaymentId: string; razorpayOrderId: string; razorpaySignature: string }) =>
+    verifyPayment: (
+      bookingId: string,
+      parentId: string,
+      body: { razorpayPaymentId: string; razorpayOrderId: string; razorpaySignature: string },
+    ) =>
       apiFetch<{ ok: boolean }>(`/payments/${bookingId}/verify`, {
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify({ parentId, ...body }),
       }),
   },
   teachers: {

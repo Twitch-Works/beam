@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Dimensions, NativeSyntheticEvent, NativeScrollEvent, Alert, Share,
 } from 'react-native'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams, router } from 'expo-router'
@@ -162,7 +162,7 @@ export default function ReelsScreen() {
         <View style={styles.sidebarItem}>
           <View style={styles.avatarWrap}>
             <Image
-              source={video.teacher.avatarUrl ? { uri: video.teacher.avatarUrl } : require('../../assets/images/icon.png')}
+              source={video.teacher.avatarUrl ? { uri: video.teacher.avatarUrl } : undefined}
               style={styles.teacherAvatar}
               contentFit="cover"
             />
@@ -231,7 +231,7 @@ export default function ReelsScreen() {
         {/* Teacher row */}
         <View style={styles.teacherRow}>
           <Image
-            source={video.teacher.avatarUrl ? { uri: video.teacher.avatarUrl } : require('../../assets/images/icon.png')}
+            source={video.teacher.avatarUrl ? { uri: video.teacher.avatarUrl } : undefined}
             style={styles.teacherRowAvatar}
             contentFit="cover"
           />

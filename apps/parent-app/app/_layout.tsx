@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from '@/lib/AuthContext'
 import { LateOnboardingProvider } from '@/lib/LateOnboardingContext'
 import { SavedActivitiesProvider } from '@/lib/SavedActivitiesContext'
+import { BootGate } from '@/components/BootGate'
 
 SplashScreen.preventAutoHideAsync()
 
@@ -43,8 +44,10 @@ export default function RootLayout() {
           <SavedActivitiesProvider>
             <QueryClientProvider client={queryClient}>
               <AuthProvider>
-                <StatusBar style="auto" />
-                <Stack screenOptions={{ headerShown: false }} />
+                <BootGate>
+                  <StatusBar style="auto" />
+                  <Stack screenOptions={{ headerShown: false }} />
+                </BootGate>
               </AuthProvider>
             </QueryClientProvider>
           </SavedActivitiesProvider>

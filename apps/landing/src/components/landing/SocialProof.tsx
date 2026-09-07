@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, BadgeCheck, Star } from "lucide-react";
 import starIcon from "../../assets/star.png";
 import { C, FB, FH } from "./tokens";
 import { Reveal } from "./Reveal";
+import { BeamImg } from "../BeamImg";
 
 const testimonials = [
   {
@@ -111,7 +112,7 @@ export function SocialProof() {
             fontFamily: FH, fontWeight: 800, fontSize: 11,
             textTransform: "uppercase", letterSpacing: 1.5, margin: "0 0 16px",
           }}>
-            <img src={starIcon} alt="" aria-hidden="true" style={{ height: 13 }} /> Real Stories
+            <BeamImg src={starIcon} alt="" aria-hidden="true" style={{ height: 13 }} /> Real Stories
           </p>
           <h2 style={{
             fontFamily: FH, fontWeight: 900, fontSize: "clamp(28px, 3.5vw, 40px)",
@@ -162,7 +163,7 @@ export function SocialProof() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
                 <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
                   <div style={{ width: 52, height: 52, borderRadius: "50%", overflow: "hidden", flexShrink: 0, border: "3px solid #EAF6F6" }}>
-                    <img src={t.avatar} alt={t.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <BeamImg src={t.avatar} alt={t.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   </div>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

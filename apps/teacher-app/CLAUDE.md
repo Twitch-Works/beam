@@ -356,7 +356,9 @@ database, Razorpay, Supabase, or verification-provider errors to users.
 - Never call `api-client` directly in screen or component files
 - Never define teacher/session data types inline; use `@beam/schemas`
 - Never use FlatList; use FlashList
-- Never use React Native `Image`; use `expo-image`
+- Never use React Native `Image` or `expo-image` directly for content images; use
+  `{ BeamImage as Image } from '@/components/BeamImage'` — it falls back to
+  `assets/images/splash-icon-solid.png` (the Beam mark) on a missing/broken source
 - Never hardcode colors, spacing, font sizes, shadows, or radii
 - Never put business rules in route files
 - Never display raw backend/provider error messages to teachers

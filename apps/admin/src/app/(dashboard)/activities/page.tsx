@@ -10,6 +10,7 @@ import { StatCard } from '@/components/ui/StatCard'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { ApiFallbackBanner } from '@/components/ui/ApiFallbackBanner'
 import { ACTIVITY_STATUS_BADGE } from '@/lib/status-badges'
+import { BeamImage } from '@/components/BeamImage'
 
 const CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
   Dance:          { bg: '#FF7A59', color: '#fff' },
@@ -264,7 +265,7 @@ export default function ActivitiesPage() {
                     <tr key={a.id}>
                       <td>
                         <div style={{ width: 44, height: 44, borderRadius: 8, flexShrink: 0, overflow: 'hidden', background: cat.bg }}>
-                          <img src={a.imageUrl} alt={a.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                          <BeamImage src={a.imageUrl} alt={a.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                         </div>
                       </td>
                       <td>
@@ -324,7 +325,7 @@ export default function ActivitiesPage() {
                     <div key={a.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
                       {/* Image area */}
                       <div style={{ height: 140, background: cat.bg, position: 'relative', overflow: 'hidden' }}>
-                        <img src={a.imageUrl} alt={a.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        <BeamImage src={a.imageUrl} alt={a.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                         <div style={{ position: 'absolute', top: 10, right: 10 }}>
                           <span className={ACTIVITY_STATUS_BADGE[a.status].cls}>{ACTIVITY_STATUS_BADGE[a.status].label}</span>
                         </div>

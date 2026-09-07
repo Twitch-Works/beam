@@ -8,7 +8,7 @@ import {
   useWindowDimensions,
   Linking,
 } from 'react-native'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import * as Haptics from 'expo-haptics'

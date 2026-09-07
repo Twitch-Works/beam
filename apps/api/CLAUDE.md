@@ -74,9 +74,27 @@ Auth: none currently enforced — `authenticate` middleware exists but admin rou
 | GET | `/admin/users` | `role`, `search`, `page`, `limit` | `{ items, total, page, limit }` — items include `childCount`, `bookingCount` |
 
 ### Payments
-| Method | Path | Query | Response |
+| Method | Path | Query / Body | Response |
 |--------|------|-------|----------|
 | GET | `/admin/payments` | `status`, `search`, `page`, `limit` | `{ payments[], payouts[], totals: { totalRevenue, pendingPayouts, refundsIssued, failed } }` |
+
+### Payments — parent checkout (Razorpay Standard Checkout)
+
+`src/modules/payments/` — **not** JWT-guarded yet (matches `/bookings` etc.): takes
+`parentId` in the body and checks `payment.parentId === parentId` → 403 otherwise.
+Env: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (server-only), `RAZORPAY_WEBHOOK_SECRET` (optional).
+
+| Method | Path | Body | Response / behaviour |
+|--------|------|------|----------------------|
+| POST | `/payments/orders` | `{ bookingId, parentId }` | Creates a Razorpay order for the booking's `payments` row, stores `razorpay_order_id`, returns `{ orderId, amount (paise), currency, keyId }`. 400 bad body · 403 not your payment · 404 no payment · 409 already paid · 422 amount < 100 paise · 502 Razorpay error |
+| POST | `/payments/:bookingId/verify` | `{ parentId, razorpayPaymentId, razorpayOrderId, razorpaySignature }` | HMAC-SHA256(`order_id\|payment_id`, KEY_SECRET) === signature → `payments.status = success`, `bookings.status = confirmed`. 400 mismatch/missing fields (never marks paid) · 403 not your payment · 404 no payment |
+| POST | `/webhooks/razorpay` | raw body + `x-razorpay-signature` | Raw-body HMAC with `RAZORPAY_WEBHOOK_SECRET`. Handles `payment.captured` (idempotent confirm) and `payment.failed` (cancel booking + release slot). |
+
+Booking creation (`POST /bookings`) inserts the `payments` row as `gateway: 'razorpay'`,
+`status: 'pending'` — **except** in `APP_MODE=development`, where it auto-captures
+(`status: 'success'`) so local/test flows need no card or native SDK. Set
+`RAZORPAY_TEST_CHECKOUT=true` to force the real create-order → checkout → verify
+flow while keeping every other dev convenience (OTP `000000`, no 24h window, …).
 
 ### Reviews
 | Method | Path | Query | Response |

@@ -12,6 +12,9 @@ const OTP_VISIBLE_WINDOW_AFTER_HOURS = 3
 const DEVELOPMENT_OTP = '000000'
 const APP_MODE = process.env.APP_MODE ?? process.env.NODE_ENV ?? 'development'
 const MIN_BOOKING_HOURS = APP_MODE === 'development' ? 0 : 24
+// Force the real Razorpay create-order → checkout → verify flow even in dev
+// (keeps every other dev convenience — OTP 000000, no 24h window, etc.).
+const RAZORPAY_TEST_CHECKOUT = (process.env.RAZORPAY_TEST_CHECKOUT ?? '').toLowerCase() === 'true'
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function parseSlotDateTime(slot: { date: string; startTime: string }) {
@@ -128,14 +131,19 @@ async function sendTeacherWhatsAppNotification(params: {
   console.log('[beam-whatsapp][teacher]', { teacherId: params.teacherId, message })
 }
 
-async function createMockPayment(params: { bookingId: string; parentId: string; amount: number }) {
+async function createBookingPayment(params: { bookingId: string; parentId: string; amount: number }) {
+  // In development we auto-capture so the test flow needs no real card / native SDK.
+  // Everywhere else — and whenever RAZORPAY_TEST_CHECKOUT is on — the row starts
+  // `pending` and is settled by the Razorpay create-order → checkout → verify
+  // (or webhook) flow in the payments module.
+  const autoCapture = APP_MODE === 'development' && !RAZORPAY_TEST_CHECKOUT
   const [payment] = await db.insert(schema.payments).values({
     bookingId: params.bookingId,
     parentId: params.parentId,
     amount: String(params.amount),
-    gateway: 'upi',
-    gatewayPaymentId: `mock_${params.bookingId.slice(0, 8)}`,
-    status: 'success',
+    gateway: 'razorpay',
+    gatewayPaymentId: autoCapture ? `mock_${params.bookingId.slice(0, 8)}` : null,
+    status: autoCapture ? 'success' : 'pending',
   }).returning()
 
   return payment
@@ -411,7 +419,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       lastWhatsAppSentAt: now,
     }).returning()
 
-    const payment = await createMockPayment({ bookingId, parentId, amount: totalAmount })
+    const payment = await createBookingPayment({ bookingId, parentId, amount: totalAmount })
 
     await syncConflictingTeacherSlots(db, {
       teacherId: slot.teacherId,

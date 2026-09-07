@@ -8,6 +8,7 @@ import imgLanguage from "../../assets/activity-language.png";
 import imgLifeSkills from "../../assets/activity-life-skills.png";
 import { C, FB, FH } from "./tokens";
 import { Reveal } from "./Reveal";
+import { BeamImg } from "../BeamImg";
 
 const activities = [
   {
@@ -121,7 +122,7 @@ export function ActivitiesSection() {
           letterSpacing: 1.5,
           margin: "0 0 16px",
         }}>
-          <img src={starIcon} alt="" aria-hidden="true" style={{ height: 13 }} /> Explore by Category
+          <BeamImg src={starIcon} alt="" aria-hidden="true" style={{ height: 13 }} /> Explore by Category
         </p>
         <h2 style={{
           fontFamily: FH, fontWeight: 900,
@@ -144,7 +145,7 @@ export function ActivitiesSection() {
                 borderTopRightRadius: 14,
                 overflow: "hidden",
               }}>
-                <img
+                <BeamImg
                   className="activity-img"
                   src={image}
                   alt={label}

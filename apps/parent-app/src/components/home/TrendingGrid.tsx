@@ -1,6 +1,6 @@
 import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
-import { Image } from 'expo-image'
+import { BeamImage as Image } from '@/components/BeamImage'
 import { router } from 'expo-router'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
@@ -44,7 +44,7 @@ const TrendingCard = React.memo(function TrendingCard({
         source={
           activity.imageUrl
             ? { uri: activity.imageUrl }
-            : require('../../../assets/images/icon.png')
+            : undefined
         }
         style={styles.image}
         contentFit="cover"

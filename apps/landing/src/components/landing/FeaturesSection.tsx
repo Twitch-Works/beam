@@ -7,6 +7,7 @@ import featProgress from "../../assets/features copy 4.png";
 import featRewards from "../../assets/features copy 5.png";
 import { C, FB, FH } from "./tokens";
 import { Reveal } from "./Reveal";
+import { BeamImg } from "../BeamImg";
 
 const features = [
   {
@@ -139,7 +140,7 @@ export function FeaturesSection() {
             letterSpacing: 1.5,
             margin: "0 0 16px",
           }}>
-            <img src={starIcon} alt="" aria-hidden="true" style={{ height: 13 }} /> Why Parents Love Beam
+            <BeamImg src={starIcon} alt="" aria-hidden="true" style={{ height: 13 }} /> Why Parents Love Beam
           </p>
           <h2 style={{
             fontFamily: FH, fontWeight: 900,
@@ -157,7 +158,7 @@ export function FeaturesSection() {
               <div className="feature-card">
 
                 {/* Feature Illustration */}
-                <img
+                <BeamImg
                   src={img}
                   alt={title}
                   style={{ width: 200, height: 200, objectFit: "contain", marginBottom: 20 }}
