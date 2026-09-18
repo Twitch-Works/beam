@@ -3,6 +3,19 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const PUBLIC_ROUTES = ['/login', '/access-denied']
 const SUPER_ADMIN_ONLY = ['/settings', '/audit-logs']
+const TEACHER_ALLOWED = ['/my']
+const TEACHER_HOME = '/my/profile'
+
+// NEXT_PUBLIC_USER_ENV picks which roles this deployment serves: 'admin' → ops team only
+// (admin/super_admin), 'partner' → teachers only. Unset → no restriction
+// (both, as before) so existing deployments aren't broken by this var's absence.
+const NEXT_PUBLIC_USER_ENV = process.env.NEXT_PUBLIC_USER_ENV
+
+function isRoleAllowedForDeployment(role: string | undefined) {
+  if (NEXT_PUBLIC_USER_ENV === 'admin' || !NEXT_PUBLIC_USER_ENV) return role === 'admin' || role === 'super_admin'
+  if (NEXT_PUBLIC_USER_ENV === 'partner') return role === 'teacher'
+  return false
+}
 
 function isPublicRoute(pathname: string) {
   return PUBLIC_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))
@@ -10,6 +23,10 @@ function isPublicRoute(pathname: string) {
 
 function isSuperAdminRoute(pathname: string) {
   return SUPER_ADMIN_ONLY.some((route) => pathname === route || pathname.startsWith(`${route}/`))
+}
+
+function isTeacherAllowedRoute(pathname: string) {
+  return TEACHER_ALLOWED.some((route) => pathname === route || pathname.startsWith(`${route}/`))
 }
 
 export async function middleware(request: NextRequest) {
@@ -50,15 +67,25 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && pathname === '/login') {
-    return NextResponse.redirect(new URL('/', request.url))
+    const role = user.app_metadata?.role
+    if (!isRoleAllowedForDeployment(role)) {
+      return NextResponse.redirect(new URL('/access-denied', request.url))
+    }
+    return NextResponse.redirect(new URL(role === 'teacher' ? TEACHER_HOME : '/', request.url))
   }
 
   if (user && !publicRoute) {
     const role = user.app_metadata?.role
-    if (role !== 'admin' && role !== 'super_admin') {
+    if (role !== 'admin' && role !== 'super_admin' && role !== 'teacher') {
       return NextResponse.redirect(new URL('/access-denied', request.url))
     }
-    if (isSuperAdminRoute(pathname) && role !== 'super_admin') {
+    if (!isRoleAllowedForDeployment(role)) {
+      return NextResponse.redirect(new URL('/access-denied', request.url))
+    }
+    if (role === 'teacher' && !isTeacherAllowedRoute(pathname)) {
+      return NextResponse.redirect(new URL(TEACHER_HOME, request.url))
+    }
+    if (role !== 'teacher' && isSuperAdminRoute(pathname) && role !== 'super_admin') {
       const url = new URL('/access-denied', request.url)
       url.searchParams.set('from', pathname)
       return NextResponse.redirect(url)

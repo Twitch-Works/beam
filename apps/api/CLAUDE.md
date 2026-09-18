@@ -28,7 +28,7 @@ The module folders `auth/`, `users/`, `catalog/`, `scheduling/`, `booking/`, `pa
 ## API Reference
 
 Base URL: `http://localhost:3000` in dev (`PORT` env var). Production URL in `NEXT_PUBLIC_API_URL` env var.
-Auth: none currently enforced — `authenticate` middleware exists but admin routes don't use `preHandler` yet.
+Auth: `/admin/*` (all routes, via a plugin-level `preHandler` hook in `admin.routes.ts`) requires `authorize('admin', 'super_admin')`. The teacher self-service routes in `booking/teacher.routes.ts` (`/teacher/sessions`, `/teacher/profile`, `/teacher/availability`, `/teacher/earnings`, `PATCH /bookings/:id/status`) require `authorize('teacher', 'admin', 'super_admin')` and derive the acting teacher from `request.user.id` (ignoring any client-supplied id) whenever the caller's role is `teacher`. `authenticate()` normalizes a Supabase-issued JWT (`sub`/`app_metadata.role`) into `request.user`. Every other route (catalog, booking, parent, payments) is still unauthenticated — unchanged by this work.
 
 ### Health
 | Method | Path | Response |

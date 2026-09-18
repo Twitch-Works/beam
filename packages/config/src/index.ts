@@ -26,7 +26,10 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
 })
 
-const parsed = EnvSchema.safeParse(process.env)
+// Empty values in .env (e.g. `RAZORPAY_WEBHOOK_SECRET=`) count as unset
+const parsed = EnvSchema.safeParse(
+  Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== '')),
+)
 
 if (!parsed.success) {
   console.error('❌ Invalid environment variables:')

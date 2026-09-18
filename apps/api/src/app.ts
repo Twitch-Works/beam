@@ -1,14 +1,13 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
+import { getSupabaseVerifyKey } from './lib/supabase-jwks.js'
 import { adminRoutes } from './modules/admin/admin.routes.js'
 import { catalogRoutes } from './modules/catalog/catalog.routes.js'
 import { bookingRoutes } from './modules/booking/booking.routes.js'
 import { teacherRoutes } from './modules/booking/teacher.routes.js'
 import { parentRoutes } from './modules/booking/parent.routes.js'
 import { paymentsRoutes } from './modules/payments/payments.routes.js'
-
-const JWT_SECRET = process.env.JWT_SECRET ?? 'beam-dev-secret-change-in-production'
 
 export function buildApp() {
   const fastify = Fastify({ logger: false })
@@ -29,7 +28,13 @@ export function buildApp() {
     credentials: true,
   })
 
-  fastify.register(jwt, { secret: JWT_SECRET })
+  fastify.register(jwt, {
+    decode: { complete: true },
+    secret: async (_request, token) => {
+      const header = (token as { header: { alg?: string; kid?: string } }).header
+      return getSupabaseVerifyKey(header)
+    },
+  })
 
   fastify.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
 

@@ -3,9 +3,19 @@ import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
 import { eq, and, or, desc, sum, count } from 'drizzle-orm'
 import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
+import { authorize } from '../../middleware/auth.js'
 
 const DEVELOPMENT_OTP = '000000'
 const APP_MODE = process.env.APP_MODE ?? process.env.NODE_ENV ?? 'development'
+
+// A teacher can only ever act on their own id — the JWT wins over anything
+// the client passes in the query/body. Admin/super_admin keep acting on
+// whatever id they explicitly pass (e.g. viewing a teacher on their behalf).
+function resolveActorId(request: { user: { id: string; role: string } }, requestedId: string | undefined) {
+  return request.user.role === 'teacher' ? request.user.id : requestedId
+}
+
+const TEACHER_SELF_SERVICE = authorize('teacher', 'admin', 'super_admin')
 
 export async function teacherRoutes(fastify: FastifyInstance) {
 
@@ -13,8 +23,9 @@ export async function teacherRoutes(fastify: FastifyInstance) {
   // Teacher's own bookings list with optional status filter
   fastify.get<{
     Querystring: { teacherId: string; status?: string }
-  }>('/teacher/sessions', async (req, reply) => {
-    const { teacherId, status } = req.query
+  }>('/teacher/sessions', { preHandler: TEACHER_SELF_SERVICE }, async (req, reply) => {
+    const teacherId = resolveActorId(req, req.query.teacherId)
+    const { status } = req.query
     if (!teacherId) return reply.status(400).send({ error: 'teacherId is required' })
 
     const conditions = [eq(schema.bookings.teacherId, teacherId)]
@@ -62,9 +73,10 @@ export async function teacherRoutes(fastify: FastifyInstance) {
   fastify.patch<{
     Params: { id: string }
     Body: { status: 'confirmed' | 'cancelled'; teacherId: string }
-  }>('/bookings/:id/status', async (req, reply) => {
+  }>('/bookings/:id/status', { preHandler: TEACHER_SELF_SERVICE }, async (req, reply) => {
     const { id } = req.params
-    const { status, teacherId } = req.body
+    const { status } = req.body
+    const teacherId = resolveActorId(req, req.body.teacherId)
     if (!status || !teacherId) return reply.status(400).send({ error: 'status and teacherId are required' })
 
     const allowed = ['confirmed', 'cancelled'] as const
@@ -120,8 +132,8 @@ export async function teacherRoutes(fastify: FastifyInstance) {
 
   // ── GET /teacher/profile?userId= ──────────────────────────────────────────
   // Teacher's own profile (user + teacher row joined)
-  fastify.get<{ Querystring: { userId: string } }>('/teacher/profile', async (req, reply) => {
-    const { userId } = req.query
+  fastify.get<{ Querystring: { userId: string } }>('/teacher/profile', { preHandler: TEACHER_SELF_SERVICE }, async (req, reply) => {
+    const userId = resolveActorId(req, req.query.userId)
     if (!userId) return reply.status(400).send({ error: 'userId is required' })
 
     const user = await db.query.users.findFirst({ where: eq(schema.users.id, userId) })
@@ -155,8 +167,9 @@ export async function teacherRoutes(fastify: FastifyInstance) {
   // Update teacher's own profile fields
   fastify.patch<{
     Body: { userId: string; firstName?: string; lastName?: string; city?: string; bio?: string; phone?: string; specializations?: string[] }
-  }>('/teacher/profile', async (req, reply) => {
-    const { userId, firstName, lastName, city, bio, phone, specializations } = req.body
+  }>('/teacher/profile', { preHandler: TEACHER_SELF_SERVICE }, async (req, reply) => {
+    const { firstName, lastName, city, bio, phone, specializations } = req.body
+    const userId = resolveActorId(req, req.body.userId)
     if (!userId) return reply.status(400).send({ error: 'userId is required' })
 
     const userUpdate: Record<string, any> = { updatedAt: new Date() }
@@ -184,8 +197,8 @@ export async function teacherRoutes(fastify: FastifyInstance) {
 
   // ── GET /teacher/availability?userId= ─────────────────────────────────────
   // Teacher's weekly availability preferences
-  fastify.get<{ Querystring: { userId: string } }>('/teacher/availability', async (req, reply) => {
-    const { userId } = req.query
+  fastify.get<{ Querystring: { userId: string } }>('/teacher/availability', { preHandler: TEACHER_SELF_SERVICE }, async (req, reply) => {
+    const userId = resolveActorId(req, req.query.userId)
     if (!userId) return reply.status(400).send({ error: 'userId is required' })
 
     const teacher = await db.query.teachers.findFirst({
@@ -200,8 +213,9 @@ export async function teacherRoutes(fastify: FastifyInstance) {
   // Save teacher's weekly availability preferences
   fastify.patch<{
     Body: { userId: string; availability: Record<string, string[]> }
-  }>('/teacher/availability', async (req, reply) => {
-    const { userId, availability } = req.body
+  }>('/teacher/availability', { preHandler: TEACHER_SELF_SERVICE }, async (req, reply) => {
+    const { availability } = req.body
+    const userId = resolveActorId(req, req.body.userId)
     if (!userId || !availability) return reply.status(400).send({ error: 'userId and availability are required' })
 
     await db.update(schema.teachers)
@@ -213,8 +227,8 @@ export async function teacherRoutes(fastify: FastifyInstance) {
 
   // ── GET /teacher/earnings?teacherId= ──────────────────────────────────────
   // Earnings summary + payout history
-  fastify.get<{ Querystring: { teacherId: string } }>('/teacher/earnings', async (req, reply) => {
-    const { teacherId } = req.query
+  fastify.get<{ Querystring: { teacherId: string } }>('/teacher/earnings', { preHandler: TEACHER_SELF_SERVICE }, async (req, reply) => {
+    const teacherId = resolveActorId(req, req.query.teacherId)
     if (!teacherId) return reply.status(400).send({ error: 'teacherId is required' })
 
     // Total earned from completed bookings

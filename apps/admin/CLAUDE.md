@@ -1,8 +1,48 @@
 # Admin — Next.js 14
 
-Internal operating system for Beam ops. Used only by `admin` and `super_admin`.
-This app is not a marketing surface and not a parent or teacher experience.
+Internal operating system for Beam ops, used by `admin` and `super_admin` — plus a
+third, tightly-scoped `teacher` role that logs into the same app to manage only
+their own profile, schedule/availability, and earnings under `/my/*` (see
+"Teacher self-service" below). This app is not a marketing surface and not a
+general parent or teacher experience.
 Everything should optimize for speed, clarity, auditability, and operational confidence.
+
+## Teacher self-service (`/my/*`)
+
+A `teacher`-role Supabase user (role set via `app_metadata.role`, same JWT claim as
+`admin`/`super_admin`) can sign in at `/login` and is routed to `/my/profile`.
+`apps/admin/middleware.ts` restricts that role to the `/my` path prefix only —
+every other route redirects back to `/my/profile`. `AdminSidebar`/`AdminTopbar`
+render a reduced teacher-only nav (Profile, Schedule, Earnings) instead of the
+ops sidebar.
+
+Data comes from the same `/teacher/*` Fastify endpoints `apps/teacher-app` uses
+(`apps/api/src/modules/booking/teacher.routes.ts`), not from `/admin/*` — see
+`teacherApi` in `src/lib/api.ts`. Those endpoints require a bearer token
+(`authorize('teacher', 'admin', 'super_admin')`) and derive the acting teacher
+from the caller's own JWT (`request.user.id`) when the role is `teacher`,
+ignoring any client-supplied id — this is the actual data-isolation boundary,
+not just the UI routing above. `/admin/*` routes are separately gated to
+`admin`/`super_admin` only and a teacher's token can never call them.
+
+Pages: `(dashboard)/my/profile/page.tsx` (edit bio/city/phone/specializations,
+view rating/verification), `(dashboard)/my/schedule/page.tsx` (weekly
+availability editor + own upcoming/past sessions), `(dashboard)/my/earnings/page.tsx`
+(earnings summary + payout history).
+
+### `NEXT_PUBLIC_USER_ENV` — which roles this deployment serves
+
+Server-only env var (not `NEXT_PUBLIC_`), read directly in `middleware.ts` and
+`src/lib/admin-access.ts` (both check it independently — defense in depth,
+matching the existing pattern for the super-admin-only route list):
+- `NEXT_PUBLIC_USER_ENV=admin` — only `admin`/`super_admin` may sign in; a `teacher` login
+  is redirected to `/access-denied`. Use this for the ops deployment.
+- `NEXT_PUBLIC_USER_ENV=partner` — only `teacher` may sign in; `admin`/`super_admin` are
+  redirected to `/access-denied`. Use this for a teacher-facing deployment.
+- Unset — no restriction (all three roles allowed), the pre-existing behavior.
+
+This lets the same Next.js app be deployed twice under different hostnames/env
+configs — one ops instance, one partner/teacher instance — without a code fork.
 
 ## What admin owns
 - Booking operations: assign teacher, reschedule, cancel, track status
@@ -190,6 +230,16 @@ Topbar.tsx          — Sticky topbar: global search, date chip, notification be
 (dashboard)/notifications/page.tsx     — Notification templates, campaigns, delivery logs
 (dashboard)/settings/page.tsx          — System configuration (super_admin only)
 (dashboard)/audit-logs/page.tsx        — Audit history and action traceability (super_admin only)
+
+(dashboard)/my/page.tsx                — teacher role: redirects to /my/profile
+(dashboard)/my/profile/page.tsx        — teacher role: own profile view + edit form (GET/PATCH /teacher/profile)
+(dashboard)/my/schedule/page.tsx       — teacher role: weekly availability editor + own sessions (GET/PATCH /teacher/availability, GET /teacher/sessions)
+(dashboard)/my/earnings/page.tsx       — teacher role: earnings summary + payout history (GET /teacher/earnings)
+```
+
+### src/lib/ (additions)
+```txt
+useTeacherId.ts — client hook resolving the signed-in teacher's own user id via Supabase browser session
 ```
 
 ## Navigation model
@@ -339,21 +389,25 @@ Use a low-profile but visible system strip for:
 - Must prioritize safety, reversibility, and traceability
 
 ## Role access matrix
-| Section | admin | super_admin |
-|---|---|---|
-| Dashboard | ✅ | ✅ |
-| Users | ✅ | ✅ |
-| Teachers | ✅ | ✅ |
-| Activities | ✅ | ✅ |
-| Bookings | ✅ | ✅ |
-| Payments (view) | ✅ | ✅ |
-| Refund approval | ✅ | ✅ |
-| Payout dispatch | ❌ | ✅ |
-| Settings | ❌ | ✅ |
-| Audit logs | ❌ | ✅ |
+| Section | admin | super_admin | teacher |
+|---|---|---|---|
+| Dashboard | ✅ | ✅ | ❌ |
+| Users | ✅ | ✅ | ❌ |
+| Teachers (all) | ✅ | ✅ | ❌ |
+| Activities | ✅ | ✅ | ❌ |
+| Bookings (all) | ✅ | ✅ | ❌ |
+| Payments (view) | ✅ | ✅ | ❌ |
+| Refund approval | ✅ | ✅ | ❌ |
+| Payout dispatch | ❌ | ✅ | ❌ |
+| Settings | ❌ | ✅ | ❌ |
+| Audit logs | ❌ | ✅ | ❌ |
+| `/my/profile`, `/my/schedule`, `/my/earnings` | ❌ | ❌ | ✅ (own data only) |
 
-Enforce at layout and page level using SSR session role checks.
-Never rely on client-only hiding for privileged actions.
+Enforce at layout and page level using SSR session role checks, mirrored by
+`apps/admin/middleware.ts` (route-level, runs before any page renders) and by
+`authorize(...)` preHandlers server-side in `apps/api` — never rely on
+client-only hiding for privileged actions, and never rely on the Next.js layer
+alone for the teacher data boundary (see "Teacher self-service" above).
 
 ## Data and component patterns
 ```ts

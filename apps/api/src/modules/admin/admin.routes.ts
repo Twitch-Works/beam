@@ -3,6 +3,7 @@ import { and, count, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL, alia
 import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
 import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
+import { authorize } from '../../middleware/auth.js'
 
 const SLOT_DURATION_OPTIONS = [30, 45, 60, 90, 120, 180, 240]
 
@@ -133,6 +134,9 @@ function buildAdminCaseReference() {
 }
 
 export async function adminRoutes(fastify: FastifyInstance) {
+  // Every /admin/* route is ops-only — teachers must never reach this module.
+  fastify.addHook('preHandler', authorize('admin', 'super_admin'))
+
   const teacherUsers = aliasedTable(schema.users, 'teacher_users')
 
   // ─── Analytics Overview ────────────────────────────────────────────────────

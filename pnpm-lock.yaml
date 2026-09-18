@@ -72,6 +72,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@beam/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@beam/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
@@ -81,6 +84,9 @@ importers:
       '@fastify/jwt':
         specifier: ^8.0.1
         version: 8.0.1
+      '@supabase/supabase-js':
+        specifier: ^2.105.4
+        version: 2.105.4
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2

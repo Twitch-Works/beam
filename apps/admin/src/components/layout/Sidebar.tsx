@@ -59,6 +59,12 @@ const systemNav: NavItem[] = [
   { label: 'Audit Logs',      href: '/audit-logs',      icon: <IconAudit /> },
 ]
 
+const teacherNav: NavItem[] = [
+  { label: 'My Profile',  href: '/my/profile',  icon: <IconUsers /> },
+  { label: 'My Schedule', href: '/my/schedule', icon: <IconCalendarDays /> },
+  { label: 'My Earnings', href: '/my/earnings', icon: <IconRevenue /> },
+]
+
 /* ─── Sidebar component ───────────────────────────────────────────────────── */
 
 export function AdminSidebar({ session }: { session: AdminSession }) {
@@ -110,25 +116,35 @@ export function AdminSidebar({ session }: { session: AdminSession }) {
 
         {/* Nav */}
         <nav className="sidebar__nav">
-          <div className="sidebar__group">
-            {mainNav.map((item) => (
-              <SidebarLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
-            ))}
-          </div>
+          {session.role === 'teacher' ? (
+            <div className="sidebar__group">
+              {teacherNav.map((item) => (
+                <SidebarLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="sidebar__group">
+                {mainNav.map((item) => (
+                  <SidebarLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
+                ))}
+              </div>
 
-          {!collapsed && <p className="sidebar__section-label">Analytics</p>}
-          <div className="sidebar__group">
-            {analyticsNav.map((item) => (
-              <SidebarLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
-            ))}
-          </div>
+              {!collapsed && <p className="sidebar__section-label">Analytics</p>}
+              <div className="sidebar__group">
+                {analyticsNav.map((item) => (
+                  <SidebarLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
+                ))}
+              </div>
 
-          {!collapsed && <p className="sidebar__section-label">System</p>}
-          <div className="sidebar__group">
-            {systemNav.map((item) => (
-              <SidebarLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
-            ))}
-          </div>
+              {!collapsed && <p className="sidebar__section-label">System</p>}
+              <div className="sidebar__group">
+                {systemNav.map((item) => (
+                  <SidebarLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
+                ))}
+              </div>
+            </>
+          )}
         </nav>
 
         {/* Profile footer */}
@@ -140,13 +156,15 @@ export function AdminSidebar({ session }: { session: AdminSession }) {
             aria-haspopup="true"
             type="button"
           >
-            <div className="sidebar__avatar">{session.role === 'super_admin' ? 'SA' : 'OA'}</div>
+            <div className="sidebar__avatar">
+              {session.role === 'super_admin' ? 'SA' : session.role === 'teacher' ? 'TC' : 'OA'}
+            </div>
             {!collapsed && (
               <>
                 <div className="sidebar__profile-info">
                   <p className="sidebar__profile-name">{session.name}</p>
                   <p className="sidebar__profile-role">
-                    {session.role === 'super_admin' ? 'Super Admin' : 'Admin'}
+                    {session.role === 'super_admin' ? 'Super Admin' : session.role === 'teacher' ? 'Teacher' : 'Admin'}
                   </p>
                 </div>
                 <IconChevronSmall active={profileOpen} />
@@ -156,14 +174,23 @@ export function AdminSidebar({ session }: { session: AdminSession }) {
 
           {profileOpen && !collapsed && (
             <div className="sidebar__profile-menu">
-              <button className="sidebar__menu-item" type="button">
+              <button
+                className="sidebar__menu-item"
+                type="button"
+                onClick={() => {
+                  setProfileOpen(false)
+                  if (session.role === 'teacher') router.push('/my/profile')
+                }}
+              >
                 <IconUserSmall />
                 <span>My Profile</span>
               </button>
-              <button className="sidebar__menu-item" type="button">
-                <IconSettingsSmall />
-                <span>Account Settings</span>
-              </button>
+              {session.role !== 'teacher' && (
+                <button className="sidebar__menu-item" type="button">
+                  <IconSettingsSmall />
+                  <span>Account Settings</span>
+                </button>
+              )}
               <div className="sidebar__menu-divider" />
               <button
                 className="sidebar__menu-item sidebar__menu-item--danger"

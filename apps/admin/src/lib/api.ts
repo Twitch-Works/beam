@@ -1,3 +1,5 @@
+import { createSupabaseBrowserClient } from './supabase/browser'
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000'
 
 export type ApiRecord = Record<string, any>
@@ -8,12 +10,31 @@ export type AdminListResponse<TItem = ApiRecord> = {
   limit?: number
 }
 
+// All /admin/* and /teacher/* routes require a bearer token (role-checked
+// server-side) — every apiFetch call attaches the signed-in user's own
+// Supabase session token, browser-side only (all callers are 'use client' pages).
+async function getAccessToken(): Promise<string | null> {
+  if (typeof window === 'undefined') return null
+  try {
+    const supabase = createSupabaseBrowserClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = await getAccessToken()
   let res: Response
   try {
     res = await fetch(`${API_URL}${path}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', ...(options?.headers as Record<string, string> | undefined) },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options?.headers as Record<string, string> | undefined),
+      },
     })
   } catch {
     // API server unreachable — pages fall back to mock data
@@ -204,5 +225,55 @@ export const adminApi = {
 
   categories: {
     list: () => apiFetch<{ items: ApiRecord[] }>('/admin/categories'),
+  },
+}
+
+// Teacher self-service — same /teacher/* endpoints apps/teacher-app uses.
+// The API derives the acting teacher from the caller's own JWT, so the
+// `id` args below are display-only fallbacks for local/mock sessions, never
+// trusted server-side once a real token is attached.
+export type TeacherSessionRow = ApiRecord
+export type TeacherProfileRow = {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+  phone: string | null
+  city: string | null
+  avatarUrl: string | null
+  bio: string | null
+  specializations: string[]
+  verificationStatus: 'pending' | 'verified' | 'rejected'
+  rating: string
+  reviewCount: number
+  totalSessions: number
+}
+
+export const teacherApi = {
+  profile: {
+    get: (userId: string) => apiFetch<TeacherProfileRow>(`/teacher/profile?userId=${userId}`),
+    update: (body: { userId: string; firstName?: string; lastName?: string; city?: string; bio?: string; phone?: string; specializations?: string[] }) =>
+      apiFetch<{ ok: boolean }>('/teacher/profile', { method: 'PATCH', body: JSON.stringify(body) }),
+  },
+  availability: {
+    get: (userId: string) => apiFetch<{ availability: Record<string, string[]> | null }>(`/teacher/availability?userId=${userId}`),
+    update: (body: { userId: string; availability: Record<string, string[]> }) =>
+      apiFetch<{ ok: boolean }>('/teacher/availability', { method: 'PATCH', body: JSON.stringify(body) }),
+  },
+  earnings: {
+    get: (teacherId: string) => apiFetch<{
+      totalEarned: string
+      totalSessions: number
+      pendingPayout: string
+      awaitingPayoutCount: number
+      payouts: ApiRecord[]
+    }>(`/teacher/earnings?teacherId=${teacherId}`),
+  },
+  sessions: {
+    list: (teacherId: string, status?: string) => {
+      const q = new URLSearchParams({ teacherId })
+      if (status) q.set('status', status)
+      return apiFetch<{ items: TeacherSessionRow[] }>(`/teacher/sessions?${q}`)
+    },
   },
 }
