@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { GoBackButton } from './GoBackButton'
 
 export default function AccessDeniedPage() {
   return (
@@ -15,17 +15,12 @@ export default function AccessDeniedPage() {
         <div className="auth-card__header">
           <h1 className="auth-card__title" id="access-denied-title">Access denied</h1>
           <p className="auth-card__sub">
-            This surface is reserved for super admins because it can change platform settings or expose audit history.
+            Your account doesn't have access to this area. Sign in with a different account to continue.
           </p>
         </div>
 
         <div className="access-card__actions">
-          <Link className="btn btn--primary" href="/">
-            Back to dashboard
-          </Link>
-          <Link className="btn btn--secondary" href="/login">
-            Switch preview role
-          </Link>
+          <GoBackButton />
         </div>
       </section>
     </main>

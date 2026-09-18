@@ -10,9 +10,9 @@ Everything should optimize for speed, clarity, auditability, and operational con
 ## Teacher self-service (`/my/*`)
 
 A `teacher`-role Supabase user (role set via `app_metadata.role`, same JWT claim as
-`admin`/`super_admin`) can sign in at `/login` and is routed to `/my/profile`.
+`admin`/`super_admin`) can sign in at `/login` and is routed to `/my/earnings`.
 `apps/admin/middleware.ts` restricts that role to the `/my` path prefix only —
-every other route redirects back to `/my/profile`. `AdminSidebar`/`AdminTopbar`
+every other route redirects back to `/my/earnings`. `AdminSidebar`/`AdminTopbar`
 render a reduced teacher-only nav (Profile, Schedule, Earnings) instead of the
 ops sidebar.
 
@@ -231,7 +231,7 @@ Topbar.tsx          — Sticky topbar: global search, date chip, notification be
 (dashboard)/settings/page.tsx          — System configuration (super_admin only)
 (dashboard)/audit-logs/page.tsx        — Audit history and action traceability (super_admin only)
 
-(dashboard)/my/page.tsx                — teacher role: redirects to /my/profile
+(dashboard)/my/page.tsx                — teacher role: redirects to /my/earnings
 (dashboard)/my/profile/page.tsx        — teacher role: own profile view + edit form (GET/PATCH /teacher/profile)
 (dashboard)/my/schedule/page.tsx       — teacher role: weekly availability editor + own sessions (GET/PATCH /teacher/availability, GET /teacher/sessions)
 (dashboard)/my/earnings/page.tsx       — teacher role: earnings summary + payout history (GET /teacher/earnings)

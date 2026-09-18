@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 const PUBLIC_ROUTES = ['/login', '/access-denied']
 const SUPER_ADMIN_ONLY = ['/settings', '/audit-logs']
 const TEACHER_ALLOWED = ['/my']
-const TEACHER_HOME = '/my/profile'
+const TEACHER_HOME = '/my/earnings'
 
 // NEXT_PUBLIC_USER_ENV picks which roles this deployment serves: 'admin' → ops team only
 // (admin/super_admin), 'partner' → teachers only. Unset → no restriction
