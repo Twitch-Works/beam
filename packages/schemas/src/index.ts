@@ -7,6 +7,7 @@ export * from './review.schema'
 export * from './discount.schema'
 export * from './notification.schema'
 export * from './schedule.schema'
+export * from './guest-booking.schema'
 
 import * as userSchemas from './user.schema'
 import * as bookingSchemas from './booking.schema'
@@ -17,6 +18,7 @@ import * as reviewSchemas from './review.schema'
 import * as discountSchemas from './discount.schema'
 import * as notificationSchemas from './notification.schema'
 import * as scheduleSchemas from './schedule.schema'
+import * as guestBookingSchemas from './guest-booking.schema'
 
 const beamSchemas = {
   ...userSchemas,
@@ -28,6 +30,7 @@ const beamSchemas = {
   ...discountSchemas,
   ...notificationSchemas,
   ...scheduleSchemas,
+  ...guestBookingSchemas,
 }
 
 export default beamSchemas

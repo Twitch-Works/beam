@@ -4,6 +4,12 @@
 > NOTE: the landing page is now a Vite + React app under `src/` (not a single `index.html`).
 > The brand/palette/copy guidance below still applies; the "single HTML file" mechanics do not.
 >
+> UPDATE (2026-10): the page now also takes real bookings without login — "Book Now" opens
+> `src/components/booking/BookingModal.tsx` (class → slot → parent/child details → Razorpay payment →
+> "Your booking is complete" + store buttons), backed by the API's public `/guest/bookings` endpoints
+> via `src/lib/bookingApi.ts`. Env: `VITE_API_URL`, `VITE_PLAY_STORE_URL`, `VITE_APP_STORE_URL` (see `.env.example`).
+> The "Do NOT build: booking flow / payment / backend" list below is superseded for this feature.
+>
 > Images: use `<BeamImg>` from `src/components/BeamImg.tsx` instead of a raw `<img>`.
 > It falls back to `src/assets/splash-icon-solid.png` (the Beam mark) on a missing or
 > broken `src`.

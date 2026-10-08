@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, and, desc, inArray, or } from 'drizzle-orm'
+import { indianPhoneVariants } from '../../lib/phone.js'
 import beamSchemas from '@beam/schemas'
 
 // Skill axis mapping: activity tags/category keywords → skill keys
@@ -90,8 +91,9 @@ export async function parentRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'authUserId, email, or phone is required' })
     }
 
+    // users.id is the Supabase id for app signups; claimed landing accounts keep their own id + auth_user_id
     let user = authUserId
-      ? await db.query.users.findFirst({ where: eq(schema.users.id, authUserId) })
+      ? await db.query.users.findFirst({ where: or(eq(schema.users.id, authUserId), eq(schema.users.authUserId, authUserId)) })
       : null
 
     if (!user && normalizedEmail) {
@@ -99,7 +101,8 @@ export async function parentRoutes(fastify: FastifyInstance) {
     }
 
     if (!user && normalizedPhone) {
-      user = await db.query.users.findFirst({ where: eq(schema.users.phone, normalizedPhone) })
+      // Also finds parents created by the landing-page guest booking flow
+      user = await db.query.users.findFirst({ where: inArray(schema.users.phone, indianPhoneVariants(normalizedPhone)) })
     }
 
     if (!user) return reply.status(404).send({ error: 'User not found' })
@@ -114,6 +117,8 @@ export async function parentRoutes(fastify: FastifyInstance) {
       latitude: user.latitude,
       longitude: user.longitude,
       role: user.role,
+      accountStatus: user.accountStatus,
+      createdVia: user.createdVia,
     })
   })
 

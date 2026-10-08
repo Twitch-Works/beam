@@ -135,8 +135,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
       select slot.date from slots slot
       where slot.activity_id = ${schema.activities.id}
         and slot.is_available = true
-        and (${APP_MODE === 'development'} = true or (slot.date || 'T' || slot.start_time)::timestamp >= now() + interval '24 hours')
-        and (slot.date || 'T' || slot.start_time)::timestamp <= now() + interval '15 days'
+        -- slot times are stored as naive IST; the DB clock is UTC
+        and (slot.date || 'T' || slot.start_time)::timestamp >= (now() at time zone 'Asia/Kolkata') + (${APP_MODE === 'development' ? '0 hours' : '24 hours'})::interval
+        and (slot.date || 'T' || slot.start_time)::timestamp <= (now() at time zone 'Asia/Kolkata') + interval '15 days'
       order by slot.date asc, slot.start_time asc
       limit 1
     )`
@@ -144,8 +145,9 @@ export async function catalogRoutes(fastify: FastifyInstance) {
       select slot.start_time from slots slot
       where slot.activity_id = ${schema.activities.id}
         and slot.is_available = true
-        and (${APP_MODE === 'development'} = true or (slot.date || 'T' || slot.start_time)::timestamp >= now() + interval '24 hours')
-        and (slot.date || 'T' || slot.start_time)::timestamp <= now() + interval '15 days'
+        -- slot times are stored as naive IST; the DB clock is UTC
+        and (slot.date || 'T' || slot.start_time)::timestamp >= (now() at time zone 'Asia/Kolkata') + (${APP_MODE === 'development' ? '0 hours' : '24 hours'})::interval
+        and (slot.date || 'T' || slot.start_time)::timestamp <= (now() at time zone 'Asia/Kolkata') + interval '15 days'
       order by slot.date asc, slot.start_time asc
       limit 1
     )`

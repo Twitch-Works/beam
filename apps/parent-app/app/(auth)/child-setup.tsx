@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
   KeyboardAvoidingView, Platform, ScrollView, Alert,
@@ -12,6 +12,8 @@ import { colors, spacing, radius, fontSize, shadows } from '@/constants/theme'
 import { supabase } from '@/lib/supabase'
 import { parentApi } from '@/lib/api'
 import { useAuth } from '@/lib/AuthContext'
+import { useChildren } from '@/hooks/useChildren'
+import type { Child } from '@/lib/api'
 
 // ─────────────────────────────────────────────
 // Data
@@ -31,6 +33,15 @@ const AGE_OPTIONS = [
 ]
 
 const GENDER_OPTIONS = ['Boy', 'Girl', 'Non-binary', 'Prefer not to say']
+
+// Map a stored date of birth back to the closest age chip
+function ageOptionForDob(dateOfBirth: string) {
+  const dob = new Date(dateOfBirth)
+  const now = new Date()
+  let age = now.getFullYear() - dob.getFullYear()
+  if (now < new Date(now.getFullYear(), dob.getMonth(), dob.getDate())) age -= 1
+  return [...AGE_OPTIONS].reverse().find((o) => age >= o.mid) ?? AGE_OPTIONS[0]
+}
 
 const INTERESTS = [
   { id: 'art',        label: 'Art & Craft',   icon: 'color-palette-outline' },
@@ -86,6 +97,33 @@ export default function ChildSetupScreen() {
 
   const [loading, setLoading]         = useState(false)
 
+  // A child entered while booking on the website already exists — finish that
+  // profile instead of creating a duplicate (parent can still add a different child)
+  const { data: existingChildren } = useChildren()
+  const [editingChild, setEditingChild] = useState<Child | null>(null)
+  const [prefillDone, setPrefillDone]   = useState(false)
+
+  useEffect(() => {
+    const first = existingChildren?.items?.[0]
+    if (prefillDone || !first) return
+    setPrefillDone(true)
+    setEditingChild(first)
+    setChildName(first.firstName)
+    setAgeGroup(ageOptionForDob(first.dateOfBirth))
+    if (first.gender && GENDER_OPTIONS.includes(first.gender)) setGender(first.gender)
+    if (first.interests?.length) setInterests(first.interests)
+    if (first.notes) setNotes(first.notes)
+  }, [existingChildren, prefillDone])
+
+  function addDifferentChild() {
+    setEditingChild(null)
+    setChildName('')
+    setAgeGroup(null)
+    setGender(null)
+    setNotes('')
+    setInterests([])
+  }
+
   const stepNumber = step === 'info' ? 1 : step === 'interests' ? 2 : 3
 
   function toggleInterest(id: string) {
@@ -111,6 +149,20 @@ export default function ChildSetupScreen() {
       const midAge = ageGroup?.mid ?? 5
       const dob = new Date()
       dob.setFullYear(dob.getFullYear() - midAge)
+
+      if (editingChild) {
+        // Keep the exact DOB from the booking unless the parent picked a different age band
+        const ageChanged = ageGroup?.label !== ageOptionForDob(editingChild.dateOfBirth).label
+        await parentApi.children.update(editingChild.id, parentUserId, {
+          firstName: childName.trim(),
+          ...(ageChanged ? { dateOfBirth: dob.toISOString().split('T')[0] } : {}),
+          gender: gender ?? undefined,
+          interests,
+          notes: notes.trim() || undefined,
+        })
+        await completeOnboarding()
+        return
+      }
 
       console.log("CHECKING CHIL AGE and ONBOARDING ");
       console.log("Child Age:", midAge);
@@ -230,6 +282,20 @@ export default function ChildSetupScreen() {
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${(stepNumber / TOTAL_STEPS) * 100}%` as any }]} />
       </View>
+
+      {step === 'info' && editingChild && (
+        <View style={styles.bookingBanner}>
+          <Ionicons name="sparkles-outline" size={18} color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bookingBannerText}>
+              {editingChild.firstName} is already on your account from your booking. Complete their profile below.
+            </Text>
+            <TouchableOpacity onPress={addDifferentChild}>
+              <Text style={styles.bookingBannerLink}>Add a different child instead</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Step content */}
       {step === 'info' && (
@@ -648,6 +714,13 @@ const styles = StyleSheet.create({
   primaryBtnTextDisabled: { color: colors.gray },
 
   skipLink: { alignItems: 'center', paddingVertical: spacing.sm },
+  bookingBanner: {
+    flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start',
+    backgroundColor: colors.mint, borderRadius: radius.card,
+    marginHorizontal: spacing.lg, marginTop: spacing.md, padding: spacing.md,
+  },
+  bookingBannerText: { fontSize: fontSize.body, fontFamily: 'Nunito-SemiBold', color: colors.navy },
+  bookingBannerLink: { fontSize: fontSize.body, fontFamily: 'Nunito-Bold', color: colors.primary, marginTop: spacing.xs },
   skipText: { fontSize: fontSize.body, fontFamily: 'Nunito-SemiBold', color: colors.gray },
 
   // Success screen

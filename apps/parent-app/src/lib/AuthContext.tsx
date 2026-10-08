@@ -104,6 +104,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log("session.user.id ", session.user.id);
           console.log("session.user.email ", session.user.email);
           console.log("session.user.user_metadata ", session.user.user_metadata);
+        // Phone-verified logins may own a provisional account from a landing-page
+        // booking — link it first so its kids and bookings belong to this login.
+        if (phone) await parentApi.users.claimProvisional(session.user.id).catch(() => null)
+
         const profile = await parentApi.users.me({
           authUserId: session.user.id,
           email: session.user.email ?? undefined,

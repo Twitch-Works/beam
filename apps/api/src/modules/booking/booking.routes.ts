@@ -4,6 +4,7 @@ import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
 import { eq, and, or, desc, ne, inArray, count } from 'drizzle-orm'
 import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
+import { err, ok, type Result } from '../../lib/result.js'
 
 const MAX_BOOKING_HOURS = 24 * 15
 const RESCHEDULE_BUFFER_HOURS = 24
@@ -185,6 +186,93 @@ async function getLatestSessionIssuesMap(bookingIds: string[]) {
     }
   }
   return map
+}
+
+export type CreateBookingInput = {
+  parentId: string
+  childId: string
+  activityId: string
+  slotId: string
+  totalAmount: number
+  discountCode?: string
+  discountAmount?: number
+}
+export type CreateBookingError = { status: 404 | 409 | 422; message: string }
+
+/**
+ * Shared booking creation (mobile POST /bookings and the landing-page guest flow):
+ * booking window, double-booking check, payment row, slot lock sync, teacher notice.
+ */
+export async function createBooking(
+  input: CreateBookingInput,
+): Promise<Result<{ booking: typeof schema.bookings.$inferSelect; payment: typeof schema.payments.$inferSelect }, CreateBookingError>> {
+  const { parentId, childId, activityId, slotId, totalAmount, discountCode, discountAmount = 0 } = input
+
+  const [slot, parent, activity] = await Promise.all([
+    db.query.slots.findFirst({ where: eq(schema.slots.id, slotId) }),
+    db.query.users.findFirst({ where: eq(schema.users.id, parentId) }),
+    db.query.activities.findFirst({ where: eq(schema.activities.id, activityId) }),
+  ])
+
+  if (!slot) return err({ status: 404, message: 'Slot not found' })
+  if (!slot.isAvailable) return err({ status: 409, message: 'Slot no longer available' })
+  if (slot.activityId !== activityId) return err({ status: 422, message: 'Selected slot does not belong to this activity' })
+  if (!activity) return err({ status: 404, message: 'Activity not found' })
+
+  const scheduledAt = parseSlotDateTime({ date: slot.date, startTime: slot.startTime })
+  if (!validateBookingWindow(scheduledAt)) {
+    return err({ status: 422, message: 'Bookings can only be made between 1 and 15 days before the class time' })
+  }
+
+  const conflictingBooking = await findParentConflictingBooking({ parentId, scheduledAt })
+  if (conflictingBooking) {
+    return err({ status: 409, message: 'You already have another booking scheduled at this date and time' })
+  }
+
+  const bookingId = randomUUID()
+  const now = new Date()
+  const isDevelopmentMode = APP_MODE === 'development'
+  const [booking] = await db.insert(schema.bookings).values({
+    id: bookingId,
+    parentId,
+    childId,
+    activityId,
+    slotId,
+    teacherId: slot.teacherId,
+    status: isDevelopmentMode ? 'confirmed' : 'pending',
+    sessionType: activity.sessionType,
+    totalAmount: String(totalAmount),
+    discountAmount: String(discountAmount),
+    discountCode: discountCode ?? null,
+    scheduledAt,
+    confirmedAt: isDevelopmentMode ? now : null,
+    teacherOtp: isDevelopmentMode ? DEVELOPMENT_OTP : null,
+    teacherOtpGeneratedAt: isDevelopmentMode ? now : null,
+    lastWhatsAppSentAt: now,
+  }).returning()
+
+  const payment = await createBookingPayment({ bookingId, parentId, amount: totalAmount })
+
+  await syncConflictingTeacherSlots(db, {
+    teacherId: slot.teacherId,
+    date: slot.date,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+  })
+
+  const teacher = await db.query.users.findFirst({ where: eq(schema.users.id, slot.teacherId) })
+  if (teacher) {
+    await sendTeacherWhatsAppNotification({
+      teacherId: teacher.id,
+      teacherName: `${teacher.firstName} ${teacher.lastName}`.trim(),
+      parentName: parent ? `${parent.firstName} ${parent.lastName}`.trim() : 'A parent',
+      activityTitle: activity.title,
+      scheduledAt,
+      bookingId,
+    })
+  }
+
+  return ok({ booking, payment })
 }
 
 export async function bookingRoutes(fastify: FastifyInstance) {
@@ -371,76 +459,14 @@ export async function bookingRoutes(fastify: FastifyInstance) {
   fastify.post<{
     Body: { parentId: string; childId: string; activityId: string; slotId: string; totalAmount: number; discountCode?: string; discountAmount?: number }
   }>('/bookings', async (req, reply) => {
-    const { parentId, childId, activityId, slotId, totalAmount, discountCode, discountAmount = 0 } = req.body
+    const { parentId, childId, activityId, slotId, totalAmount } = req.body
     if (!parentId || !childId || !activityId || !slotId || !totalAmount) {
       return reply.status(400).send({ error: 'parentId, childId, activityId, slotId, totalAmount are required' })
     }
 
-    const [slot, parent, activity] = await Promise.all([
-      db.query.slots.findFirst({ where: eq(schema.slots.id, slotId) }),
-      db.query.users.findFirst({ where: eq(schema.users.id, parentId) }),
-      db.query.activities.findFirst({ where: eq(schema.activities.id, activityId) }),
-    ])
-
-    if (!slot) return reply.status(404).send({ error: 'Slot not found' })
-    if (!slot.isAvailable) return reply.status(409).send({ error: 'Slot no longer available' })
-    if (slot.activityId !== activityId) return reply.status(422).send({ error: 'Selected slot does not belong to this activity' })
-    if (!activity) return reply.status(404).send({ error: 'Activity not found' })
-
-    const scheduledAt = parseSlotDateTime({ date: slot.date, startTime: slot.startTime })
-    if (!validateBookingWindow(scheduledAt)) {
-      return reply.status(422).send({ error: 'Bookings can only be made between 1 and 15 days before the class time' })
-    }
-
-    const conflictingBooking = await findParentConflictingBooking({ parentId, scheduledAt })
-    if (conflictingBooking) {
-      return reply.status(409).send({ error: 'You already have another booking scheduled at this date and time' })
-    }
-
-    const bookingId = randomUUID()
-    const now = new Date()
-    const isDevelopmentMode = APP_MODE === 'development'
-    const [booking] = await db.insert(schema.bookings).values({
-      id: bookingId,
-      parentId,
-      childId,
-      activityId,
-      slotId,
-      teacherId: slot.teacherId,
-      status: isDevelopmentMode ? 'confirmed' : 'pending',
-      sessionType: activity.sessionType,
-      totalAmount: String(totalAmount),
-      discountAmount: String(discountAmount),
-      discountCode: discountCode ?? null,
-      scheduledAt,
-      confirmedAt: isDevelopmentMode ? now : null,
-      teacherOtp: isDevelopmentMode ? DEVELOPMENT_OTP : null,
-      teacherOtpGeneratedAt: isDevelopmentMode ? now : null,
-      lastWhatsAppSentAt: now,
-    }).returning()
-
-    const payment = await createBookingPayment({ bookingId, parentId, amount: totalAmount })
-
-    await syncConflictingTeacherSlots(db, {
-      teacherId: slot.teacherId,
-      date: slot.date,
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-    })
-
-    const teacher = await db.query.users.findFirst({ where: eq(schema.users.id, slot.teacherId) })
-    if (teacher) {
-      await sendTeacherWhatsAppNotification({
-        teacherId: teacher.id,
-        teacherName: `${teacher.firstName} ${teacher.lastName}`.trim(),
-        parentName: parent ? `${parent.firstName} ${parent.lastName}`.trim() : 'A parent',
-        activityTitle: activity.title,
-        scheduledAt,
-        bookingId,
-      })
-    }
-
-    return reply.status(201).send({ booking, payment })
+    const result = await createBooking(req.body)
+    if (!result.ok) return reply.status(result.error.status).send({ error: result.error.message })
+    return reply.status(201).send(result.value)
   })
 
   fastify.get<{ Params: { id: string }; Querystring: { parentId: string } }>('/bookings/:id', async (req, reply) => {

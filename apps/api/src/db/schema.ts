@@ -32,6 +32,7 @@ export const sessionIssueResolutionEnum = pgEnum('session_issue_resolution', ['n
 export const sessionIssueDesiredOutcomeEnum = pgEnum('session_issue_desired_outcome', ['refund', 'credit', 'rebooking', 'support'])
 export const bookingChangeRequestTypeEnum = pgEnum('booking_change_request_type', ['reschedule', 'cancel'])
 export const bookingChangeRequestStatusEnum = pgEnum('booking_change_request_status', ['pending', 'approved', 'rejected', 'withdrawn'])
+export const accountStatusEnum = pgEnum('account_status', ['provisional', 'active'])
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,12 @@ export const users = pgTable('users', {
   city: text('city'),
   latitude: real('latitude'),
   longitude: real('longitude'),
+  // 'provisional' = created by a landing-page guest booking, not yet claimed in the app
+  accountStatus: accountStatusEnum('account_status').notNull().default('active'),
+  // Supabase auth user that claimed this row when its id differs from users.id
+  authUserId: uuid('auth_user_id').unique(),
+  createdVia: text('created_via'),
+  claimedAt: timestamp('claimed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

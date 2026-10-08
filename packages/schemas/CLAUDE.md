@@ -21,6 +21,7 @@ src/
   cart.schema.ts        CartItem, CartSummary, CheckoutInput
   ai.schema.ts          RecommendationInput, RecommendationResult
   schedule.schema.ts    WeeklyAvailability, TeacherSlotInput, BookingChangeRequest (+ inputs)
+  guest-booking.schema.ts CreateGuestBookingInput, VerifyGuestPaymentInput, GuestBookingSummary
   index.ts              re-exports everything
 ```
 

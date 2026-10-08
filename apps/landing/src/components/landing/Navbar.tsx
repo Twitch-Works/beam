@@ -16,13 +16,14 @@ const navLinks = [
 interface NavbarProps {
   scrolled: boolean;
   onWaitlistClick: () => void;
+  onBookClick: () => void;
 }
 
 function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
 }
 
-export function Navbar({ scrolled, onWaitlistClick }: NavbarProps) {
+export function Navbar({ scrolled, onWaitlistClick, onBookClick }: NavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleNavClick = (id: string) => {
@@ -39,6 +40,7 @@ export function Navbar({ scrolled, onWaitlistClick }: NavbarProps) {
           .nav-links { display: none !important; }
           .nav-hamburger { display: flex !important; }
           .nav-cta { display: none !important; }
+          .nav-book { padding: 9px 16px !important; font-size: 13px !important; }
           .nav-drawer { top: 64px !important; }
         }
         @media (min-width: 769px) {
@@ -90,14 +92,26 @@ export function Navbar({ scrolled, onWaitlistClick }: NavbarProps) {
           ))}
         </div>
 
-        {/* Desktop CTA */}
-        <button
-          className="btn-teal nav-cta"
-          onClick={onWaitlistClick}
-          style={{ padding: "11px 26px", fontSize: 14 }}
-        >
-          Join Waitlist →
-        </button>
+        {/* CTAs — Book Now stays visible on mobile, waitlist moves into the drawer */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            className="nav-cta"
+            onClick={onWaitlistClick}
+            style={{
+              padding: "10px 22px", fontSize: 14, borderRadius: 100, cursor: "pointer",
+              background: "transparent", border: `1.5px solid ${C.teal}`, color: C.tealD,
+              fontFamily: FH, fontWeight: 800,
+            }}
+          >
+            Join Waitlist
+          </button>
+          <button
+            className="btn-teal nav-book"
+            onClick={onBookClick}
+            style={{ padding: "11px 26px", fontSize: 14 }}
+          >
+            Book Now →
+          </button>
 
         {/* Hamburger button (mobile only) */}
         <button
@@ -112,6 +126,7 @@ export function Navbar({ scrolled, onWaitlistClick }: NavbarProps) {
         >
           {mobileOpen ? <X size={24} strokeWidth={2} /> : <Menu size={24} strokeWidth={2} />}
         </button>
+        </div>
       </motion.nav>
 
       {/* Mobile drawer */}

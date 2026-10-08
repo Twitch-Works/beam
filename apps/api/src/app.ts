@@ -9,6 +9,7 @@ import { teacherRoutes } from './modules/booking/teacher.routes.js'
 import { parentRoutes } from './modules/booking/parent.routes.js'
 import { paymentsRoutes } from './modules/payments/payments.routes.js'
 import { schedulingRoutes } from './modules/scheduling/index.js'
+import { guestBookingRoutes } from './modules/guest-booking/index.js'
 
 export function buildApp() {
   const fastify = Fastify({ logger: false })
@@ -20,6 +21,7 @@ export function buildApp() {
       'http://localhost:3002',
       'http://localhost:3003',
       'http://localhost:3004',
+      'http://localhost:5173', // landing (Vite dev)
       /^https:\/\/.*\.beam\.co$/,
       /^https:\/\/.*\.vercel\.app$/,
       'https://beamkids.in',
@@ -56,6 +58,7 @@ export function buildApp() {
   fastify.register(parentRoutes)
   fastify.register(paymentsRoutes)
   fastify.register(schedulingRoutes)
+  fastify.register(guestBookingRoutes)
   fastify.register(adminRoutes)
 
   fastify.setErrorHandler((error, _req, reply) => {

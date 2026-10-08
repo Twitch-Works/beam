@@ -5,13 +5,14 @@ import { C, FB, FH } from "./tokens";
 import { BeamImg } from "../BeamImg";
 
 interface HeroSectionProps {
+  onBookClick: () => void;
   email: string;
   setEmail: (v: string) => void;
   submitted: boolean;
   setSubmitted: (v: boolean) => void;
 }
 
-export function HeroSection({ email, setEmail, submitted, setSubmitted }: HeroSectionProps) {
+export function HeroSection({ onBookClick, email, setEmail, submitted, setSubmitted }: HeroSectionProps) {
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (email.trim()) setSubmitted(true);
@@ -94,6 +95,13 @@ export function HeroSection({ email, setEmail, submitted, setSubmitted }: HeroSe
             Beam connects families with trusted, verified experts for engaging at-home activities
             that help children learn, play, and grow with confidence.
           </p>
+
+          <div className="ha" style={{ animationDelay: ".26s", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 22 }}>
+            <button type="button" className="btn-teal" onClick={onBookClick} style={{ padding: "16px 34px", fontSize: 17 }}>
+              Book a class now →
+            </button>
+            <span style={{ fontFamily: FB, fontSize: 13, color: C.grey }}>No sign-up needed · Pay securely online</span>
+          </div>
 
           <div className="ha" style={{ animationDelay: ".28s" }}>
             {submitted ? (

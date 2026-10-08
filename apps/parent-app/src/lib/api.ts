@@ -213,6 +213,12 @@ export const parentApi = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    // Links a landing-page (provisional) account to this login if Supabase has verified the same phone
+    claimProvisional: (authUserId: string) =>
+      apiFetch<{ status: 'claimed' | 'merged' | 'already_linked' | 'none'; parentId: string | null }>('/parent-accounts/claim', {
+        method: 'POST',
+        body: JSON.stringify({ authUserId }),
+      }),
     updateProfile: (body: { userId: string; firstName?: string; lastName?: string; city?: string; phone?: string; latitude?: number; longitude?: number }) =>
       apiFetch<{ ok: boolean }>('/users/profile', {
         method: 'PATCH',
@@ -271,6 +277,9 @@ export type ParentUser = {
   latitude?: number | null
   longitude?: number | null
   role: 'parent' | 'teacher' | 'admin' | 'super_admin'
+  // 'provisional' = created by a landing-page booking and not yet claimed in the app
+  accountStatus?: 'provisional' | 'active'
+  createdVia?: string | null
 }
 
 export type Activity = {

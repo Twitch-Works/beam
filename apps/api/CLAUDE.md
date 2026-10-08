@@ -116,6 +116,24 @@ Route → Service → Repository module; bodies validated with `@beam/schemas` (
 | GET | `/admin/change-requests` | `status` | `{ items }` — review queue |
 | PATCH | `/admin/change-requests/:id` | `{ action: 'approve'\|'reject', adminNote? }` | Approve cancel → booking cancelled, captured payment refunded, slot freed. Approve reschedule → booking moved to proposed slot (status/OTP kept), both slots re-synced. Re-validates at approval; 409 if already decided. Notifies parent + teacher, writes `audit_logs` |
 
+### Guest booking — landing page, no login (`src/modules/guest-booking/`)
+
+Unauthenticated by design; responses never include parent/child ids (an anonymous caller must not be able to
+turn a phone number into a `parentId`). Booking rules come from the shared `createBooking()` in `modules/booking`
+(also used by `POST /bookings`); payment calls go through `modules/payments` with the parent resolved server-side.
+
+| Method | Path | Body | Behaviour |
+|--------|------|------|-----------|
+| POST | `/guest/bookings` | `activityId*`, `slotId*`, `parentName*`, `phone*` (10-digit Indian), `childName*`, `childAge*` (1–16) | Finds parent by phone (`+91…`/`91…`/bare) or creates one (`guest.<phone>@guest.beamkids.in`), finds child by first name or creates one (DOB ≈ today − age), books at the activity's server-side price. 201 `{ bookingId, activityTitle, scheduledAt, amount, paymentStatus }`. 409 if the phone belongs to a teacher/admin or the slot is taken |
+| POST | `/guest/bookings/:id/payment-order` | — | Razorpay order for the booking → `{ orderId, amount (paise), currency, keyId }`. 503 if Razorpay keys missing, 409 already paid |
+| POST | `/guest/bookings/:id/verify` | `razorpayPaymentId*`, `razorpayOrderId*`, `razorpaySignature*` | HMAC verify → payment `success`, booking `confirmed` |
+| POST | `/parent-accounts/claim` | `authUserId*` | Called by the parent app after login. Looks up the Supabase user with the service-role key; **only if its phone is verified** links the matching `provisional` parent (`auth_user_id`, `account_status=active`, real email if free) → `claimed`, or — if the login already has its own parent row — moves the provisional parent's children/bookings/payments/reviews/issues/notifications into it and deletes it → `merged`. Otherwise `already_linked` / `none`. Idempotent |
+
+**Provisional accounts** (migration `0008_provisional_parent_accounts.sql`): guest bookings create `users` rows with
+`account_status='provisional'`, `created_via='landing'`, placeholder email `guest.<phone>@guest.beamkids.in`.
+`GET /users/me` resolves a login by `users.id` **or** `users.auth_user_id`, then email, then phone variants, and returns
+`accountStatus` + `createdVia`. Email-only logins (no verified phone) are never linked automatically.
+
 ### Reviews
 | Method | Path | Query | Response |
 |--------|------|-------|----------|

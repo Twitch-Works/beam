@@ -9,11 +9,14 @@ import { WaitlistSection } from "../components/landing/WaitlistSection";
 import { SocialProof } from "../components/landing/SocialProof";
 import { StatsStrip } from "../components/landing/StatsStrip";
 import { Footer } from "../components/landing/Footer";
+import { BookingModal } from "../components/booking/BookingModal";
 
 export function LandingPage() {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const openBooking = () => setBookingOpen(true);
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 20);
@@ -63,8 +66,8 @@ export function LandingPage() {
         }
       `}</style>
 
-      <Navbar scrolled={scrolled} onWaitlistClick={toWaitlist} />
-      <HeroSection email={email} setEmail={setEmail} submitted={submitted} setSubmitted={setSubmitted} />
+      <Navbar scrolled={scrolled} onWaitlistClick={toWaitlist} onBookClick={openBooking} />
+      <HeroSection onBookClick={openBooking} email={email} setEmail={setEmail} submitted={submitted} setSubmitted={setSubmitted} />
       <StatsStrip />
       <ActivitiesSection />
       <HowItWorks />
@@ -73,6 +76,7 @@ export function LandingPage() {
       <WaitlistSection email={email} setEmail={setEmail} submitted={submitted} setSubmitted={setSubmitted} />
 
       <Footer />
+      <BookingModal open={bookingOpen} onClose={() => setBookingOpen(false)} />
     </div>
   );
 }

@@ -101,3 +101,21 @@ export const UserFiltersSchema = z.object({
   search: z.string().optional(),
 })
 export type UserFilters = z.infer<typeof UserFiltersSchema>
+
+// ── Provisional parent accounts (landing-page guest booking → claimed in the app) ──
+
+export const AccountStatusSchema = z.enum(['provisional', 'active'])
+export type AccountStatus = z.infer<typeof AccountStatusSchema>
+
+// App → API after login: link any provisional account whose phone matches the
+// login's *verified* phone. The API checks the phone with Supabase itself.
+export const ClaimParentAccountInputSchema = z.object({
+  authUserId: z.string().uuid(),
+})
+export type ClaimParentAccountInput = z.infer<typeof ClaimParentAccountInputSchema>
+
+export const ClaimParentAccountResultSchema = z.object({
+  status: z.enum(['claimed', 'merged', 'already_linked', 'none']),
+  parentId: z.string().uuid().nullable(),
+})
+export type ClaimParentAccountResult = z.infer<typeof ClaimParentAccountResultSchema>

@@ -319,6 +319,7 @@ src/discount.schema.ts    — DiscountCode, DiscountType, ApplyDiscountInput
 src/notification.schema.ts — NotificationTemplate, NotificationLog
 src/ai.schema.ts          — RecommendationInput, RecommendationResult
 src/schedule.schema.ts    — WeeklyAvailability, TeacherSlotInput/Filters, BookingChangeRequest (+ Create/Review/Filters inputs)
+src/guest-booking.schema.ts — IndianMobile, CreateGuestBookingInput, VerifyGuestPaymentInput, GuestBookingSummary (landing no-login booking)
 src/index.ts              — re-exports all schemas
 ```
 
@@ -413,6 +414,8 @@ src/index.ts         — exports `api` object with all namespaced clients
 result.ts       — Result<T,E> type, ok(value), err(error) — use in ALL service returns
 event-bus.ts    — Redis pub/sub: emit(eventName, payload), on(eventName, handler)
 slot-lock.ts    — atomic slot locking: acquire(slotId, bookingId, ttlSeconds), release(slotId)
+phone.ts        — indianPhoneVariants(raw): +91… / 91… / 10-digit forms for phone matching
+supabase-admin.ts — service-role Supabase client; getVerifiedAuthPhone(authUserId)
 ```
 
 ### apps/api/src/middleware/
@@ -434,6 +437,14 @@ index.ts              — exports: createBooking, getBooking, listBookings, upda
 booking.routes.ts     — booking CRUD routes (role-scoped: parent/teacher/admin)
 booking.service.ts    — booking lifecycle, cart logic, discount application, event emission
 booking.repository.ts — Drizzle queries for bookings + cart tables
+```
+
+### apps/api/src/modules/guest-booking/
+```
+index.ts                     — exports: guestBookingRoutes
+guest-booking.routes.ts      — POST /guest/bookings, /guest/bookings/:id/payment-order, /guest/bookings/:id/verify (public, no auth)
+guest-booking.service.ts     — find/create provisional parent by phone + child, book via booking.createBooking, Razorpay order/verify via payments module, claim/merge provisional account on app login (verified phone only)
+guest-booking.repository.ts  — Drizzle queries for users, children, activities, booking+payment lookup
 ```
 
 ### apps/api/src/modules/catalog/

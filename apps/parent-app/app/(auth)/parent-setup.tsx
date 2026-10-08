@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -26,17 +26,19 @@ function formatPhoneForInput(phone?: string | null) {
 export default function ParentSetupScreen() {
   const insets = useSafeAreaInsets()
   const { redirectTo } = useLocalSearchParams<{ redirectTo?: string }>()
-  const { user, parentUserId } = useAuth()
-  const existingFirstName = (user?.user_metadata?.firstName as string | undefined)?.trim() ?? ''
-  const existingLastName = (user?.user_metadata?.lastName as string | undefined)?.trim() ?? ''
-  const existingCity = (user?.user_metadata?.city as string | undefined)?.trim() ?? ''
+  const { user, parentUserId, parentProfile } = useAuth()
+  // Booked on the website first → the details they entered there are the starting point
+  const fromLanding = parentProfile?.createdVia === 'landing'
+  const existingFirstName = ((user?.user_metadata?.firstName as string | undefined) || parentProfile?.firstName || '').trim()
+  const existingLastName = ((user?.user_metadata?.lastName as string | undefined) || parentProfile?.lastName || '').trim()
+  const existingCity = ((user?.user_metadata?.city as string | undefined) || parentProfile?.city || '').trim()
   const existingPhone = formatPhoneForInput(
     typeof user?.phone === 'string' && user.phone.length > 0
       ? user.phone
       : (user?.user_metadata?.phone as string | undefined),
   )
 
-  const needsName = !existingFirstName || !existingLastName
+  const needsName = fromLanding || !existingFirstName || !existingLastName
   const needsPhone = !existingPhone
 
   const [firstName, setFirstName] = useState(existingFirstName)
@@ -44,6 +46,14 @@ export default function ParentSetupScreen() {
   const [city, setCity]           = useState(existingCity)
   const [phone, setPhone]         = useState(existingPhone)
   const [loading, setLoading]     = useState(false)
+
+  // The profile can resolve after this screen mounts — fill in anything still empty
+  useEffect(() => {
+    if (!parentProfile) return
+    setFirstName((v) => v || parentProfile.firstName || '')
+    setLastName((v) => v || parentProfile.lastName || '')
+    setCity((v) => v || parentProfile.city || '')
+  }, [parentProfile])
 
   const isValid = useMemo(() => {
     const hasName = needsName ? firstName.trim().length >= 2 && lastName.trim().length >= 1 : true
@@ -127,6 +137,15 @@ export default function ParentSetupScreen() {
         </View>
 
         <View style={styles.form}>
+          {fromLanding && (
+            <View style={styles.infoCard}>
+              <Text style={styles.infoTitle}>We found your booking</Text>
+              <Text style={styles.infoValue}>
+                Your class booked on beamkids.in is linked to this number. Check your details below to finish your profile.
+              </Text>
+            </View>
+          )}
+
           {needsName ? (
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
