@@ -96,6 +96,26 @@ Booking creation (`POST /bookings`) inserts the `payments` row as `gateway: 'raz
 `RAZORPAY_TEST_CHECKOUT=true` to force the real create-order → checkout → verify
 flow while keeping every other dev convenience (OTP `000000`, no 24h window, …).
 
+### Scheduling — teacher class times + booking change requests (`src/modules/scheduling/`)
+
+Route → Service → Repository module; bodies validated with `@beam/schemas` (`TeacherSlotInputSchema`,
+`CreateBookingChangeRequestInputSchema`, `ReviewBookingChangeRequestInputSchema`). `/teacher/*` routes use
+`authorize('teacher','admin','super_admin')` and derive the teacher from the JWT for the `teacher` role;
+`/admin/change-requests*` use `authorize('admin','super_admin')`. Table: `booking_change_requests`
+(migration `0007_booking_change_requests.sql` — apply manually, like 0003–0005).
+
+| Method | Path | Body / Query | Behaviour |
+|--------|------|--------------|-----------|
+| GET | `/teacher/activities` | — | Published activities matching the teacher's specializations |
+| GET | `/teacher/slots` | `from`, `to` (default today → +30d), `activityId` | `{ from, to, items }` — slots with activity title + booked child |
+| POST | `/teacher/slots` | `activityId*`, `date*`, `startTime*`, `endTime*` | 201. Verified teachers only; future; duration from activity's allowed set; no partial overlap (identical window for another activity is allowed) |
+| DELETE | `/teacher/slots/:id` | — | Only unbooked slots with no booking history (409 otherwise) |
+| GET | `/teacher/change-requests` | `status` | `{ items }` — own requests with booking + current/proposed slot |
+| POST | `/teacher/bookings/:id/change-requests` | `{ type: 'cancel', reason }` or `{ type: 'reschedule', proposedSlotId, reason }` | 201. Booking must be pending/confirmed + future; one pending request per booking; proposed slot must be own, open, same activity, future, no clash |
+| POST | `/teacher/change-requests/:id/withdraw` | — | Pending → withdrawn |
+| GET | `/admin/change-requests` | `status` | `{ items }` — review queue |
+| PATCH | `/admin/change-requests/:id` | `{ action: 'approve'\|'reject', adminNote? }` | Approve cancel → booking cancelled, captured payment refunded, slot freed. Approve reschedule → booking moved to proposed slot (status/OTP kept), both slots re-synced. Re-validates at approval; 409 if already decided. Notifies parent + teacher, writes `audit_logs` |
+
 ### Reviews
 | Method | Path | Query | Response |
 |--------|------|-------|----------|

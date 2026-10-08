@@ -1,83 +1,97 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { teacherApi, type TeacherSessionRow } from '@/lib/api'
+import { useCallback, useEffect, useState } from 'react'
+import type { WeeklyAvailability } from '@beam/schemas'
+import {
+  teacherApi,
+  type ChangeRequestRow,
+  type TeacherActivityRow,
+  type TeacherSessionRow,
+  type TeacherSlotRow,
+} from '@/lib/api'
 import { useTeacherId } from '@/lib/useTeacherId'
 import { formatInr } from '@/lib/formatters'
+import { AvailabilityPanel } from './AvailabilityPanel'
+import { ClassTimesPanel } from './ClassTimesPanel'
+import { UpcomingBookingsPanel } from './UpcomingBookingsPanel'
 
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+type Tab = 'bookings' | 'classes' | 'availability' | 'past'
 
-function toRows(availability: Record<string, string[]> | null): Record<string, string> {
-  const rows: Record<string, string> = {}
-  for (const day of WEEKDAYS) rows[day] = (availability?.[day] ?? []).join(', ')
-  return rows
+type ScheduleData = {
+  availability: WeeklyAvailability | null
+  sessions: TeacherSessionRow[]
+  slots: TeacherSlotRow[]
+  activities: TeacherActivityRow[]
+  requests: ChangeRequestRow[]
 }
 
 export default function MySchedulePage() {
   const teacherId = useTeacherId()
-  const [rows, setRows] = useState<Record<string, string> | null>(null)
-  const [sessions, setSessions] = useState<TeacherSessionRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [tab, setTab] = useState<Tab>('bookings')
+  const [data, setData] = useState<ScheduleData | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!teacherId) return
-    setLoading(true)
-    Promise.all([teacherApi.availability.get(teacherId), teacherApi.sessions.list(teacherId)])
-      .then(([avail, sess]) => {
-        setRows(toRows(avail.availability))
-        setSessions(sess.items)
+    try {
+      const [avail, sess, slots, activities, requests] = await Promise.all([
+        teacherApi.availability.get(teacherId),
+        teacherApi.sessions.list(teacherId),
+        teacherApi.slots.list(teacherId),
+        teacherApi.activities.list(teacherId),
+        teacherApi.changeRequests.list(teacherId),
+      ])
+      setData({
+        availability: avail.availability,
+        sessions: sess.items,
+        slots: slots.items,
+        activities: activities.items,
+        requests: requests.items,
       })
-      .catch(() => setError('Could not load your schedule.'))
-      .finally(() => setLoading(false))
+      setError(null)
+    } catch {
+      setError('Could not load your schedule.')
+    }
   }, [teacherId])
 
-  async function handleSave() {
-    if (!teacherId || !rows) return
-    setSaving(true)
-    setError(null)
-    try {
-      const availability: Record<string, string[]> = {}
-      for (const day of WEEKDAYS) {
-        availability[day] = rows[day]
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      }
-      await teacherApi.availability.update({ userId: teacherId, availability })
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } catch {
-      setError('Failed to save availability. Please try again.')
-    } finally {
-      setSaving(false)
-    }
-  }
+  useEffect(() => {
+    load()
+  }, [load])
 
-  if (loading || !rows) {
+  if (!data || !teacherId) {
     return (
       <div>
         <div className="page-header">
           <div>
             <h1>My Schedule</h1>
-            <p className="dashboard-hero__sub">Loading your schedule…</p>
+            <p className="dashboard-hero__sub">{error ?? 'Loading your schedule…'}</p>
           </div>
         </div>
       </div>
     )
   }
 
-  const upcoming = sessions.filter((s) => s.status === 'confirmed' || s.status === 'pending')
-  const past = sessions.filter((s) => s.status === 'completed' || s.status === 'cancelled')
+  const pendingRequests = data.requests.filter((r) => r.status === 'pending').length
+  const openSlots = data.slots.filter((s) => !s.bookingId && s.isAvailable).length
+  // Anything finished, plus bookings whose time has passed without being closed out
+  const now = Date.now()
+  const past = data.sessions.filter(
+    (s) => s.status === 'completed' || s.status === 'cancelled' || (s.scheduledAt && new Date(s.scheduledAt).getTime() <= now),
+  )
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'bookings', label: pendingRequests ? `Upcoming Bookings (${pendingRequests} pending)` : 'Upcoming Bookings' },
+    { id: 'classes', label: `My Classes (${openSlots} open)` },
+    { id: 'availability', label: 'Weekly Availability' },
+    { id: 'past', label: 'Past Sessions' },
+  ]
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h1>My Schedule</h1>
-          <p className="dashboard-hero__sub">Set your weekly availability and see your booked sessions.</p>
+          <p className="dashboard-hero__sub">Plan your class times, track bookings, and request changes.</p>
         </div>
       </div>
 
@@ -87,42 +101,36 @@ export default function MySchedulePage() {
         </div>
       )}
 
-      <div className="card" style={{ marginBottom: 'var(--space-3)' }}>
-        <div className="section-card__header" style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className="section-card__title">Weekly Availability</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {saved && <span style={{ fontSize: 12, color: 'var(--color-success)', fontWeight: 600 }}>✓ Saved</span>}
-            <button className="btn btn--primary btn--sm" onClick={handleSave} disabled={saving} type="button">
-              {saving ? 'Saving…' : 'Save Availability'}
-            </button>
-          </div>
-        </div>
-        {WEEKDAYS.map((day) => (
-          <div key={day} className="form-group" style={{ display: 'grid', gridTemplateColumns: '80px 1fr', alignItems: 'center', gap: 12 }}>
-            <label className="form-label" style={{ margin: 0 }}>{day}</label>
-            <input
-              className="form-input"
-              placeholder="e.g. 10:00-12:00, 15:00-18:00"
-              value={rows[day]}
-              onChange={(e) => setRows((r) => (r ? { ...r, [day]: e.target.value } : r))}
-            />
-          </div>
+      <div className="tabs" role="tablist">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={`tab-btn${tab === t.id ? ' tab-btn--active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
         ))}
       </div>
 
-      <div className="card" style={{ padding: 0, marginBottom: 'var(--space-3)' }}>
-        <div className="section-card__header" style={{ padding: 'var(--space-4)', paddingBottom: 0 }}>
-          <h2 className="section-card__title">Upcoming Sessions</h2>
+      {tab === 'bookings' && (
+        <UpcomingBookingsPanel teacherId={teacherId} sessions={data.sessions} slots={data.slots} requests={data.requests} onChanged={load} />
+      )}
+      {tab === 'classes' && (
+        <ClassTimesPanel teacherId={teacherId} activities={data.activities} slots={data.slots} onChanged={load} />
+      )}
+      {tab === 'availability' && <AvailabilityPanel teacherId={teacherId} initial={data.availability} />}
+      {tab === 'past' && (
+        <div className="card" style={{ padding: 0 }}>
+          <div className="section-card__header" style={{ padding: 'var(--space-4)', paddingBottom: 0 }}>
+            <h2 className="section-card__title">Past Sessions</h2>
+          </div>
+          <SessionsTable rows={past} emptyText="No past sessions yet." />
         </div>
-        <SessionsTable rows={upcoming} emptyText="No upcoming sessions." />
-      </div>
-
-      <div className="card" style={{ padding: 0 }}>
-        <div className="section-card__header" style={{ padding: 'var(--space-4)', paddingBottom: 0 }}>
-          <h2 className="section-card__title">Past Sessions</h2>
-        </div>
-        <SessionsTable rows={past} emptyText="No past sessions yet." />
-      </div>
+      )}
     </div>
   )
 }

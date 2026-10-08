@@ -4,12 +4,9 @@ import { db } from '../../db/index.js'
 import * as schema from '../../db/schema.js'
 import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
 import { authorize } from '../../middleware/auth.js'
+import { teacherMatchesActivitySpecialization } from '../../lib/teacher-skills.js'
 
 const SLOT_DURATION_OPTIONS = [30, 45, 60, 90, 120, 180, 240]
-
-function normalizeSkillTerm(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-}
 
 function parseTimeToMinutes(value: string) {
   const [hours, minutes] = value.split(':').map(Number)
@@ -22,42 +19,6 @@ function getTodayDateString() {
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-function buildSkillIndex(values: string[]) {
-  const phrases = new Set<string>()
-  const tokens = new Set<string>()
-
-  for (const value of values) {
-    const normalized = normalizeSkillTerm(value)
-    if (!normalized) continue
-    phrases.add(normalized)
-    for (const token of normalized.split(' ')) {
-      if (token) tokens.add(token)
-    }
-  }
-
-  return { phrases, tokens }
-}
-
-function teacherMatchesActivitySpecialization(
-  teacherSpecializations: string[],
-  activityKeywords: string[],
-) {
-  const teacherIndex = buildSkillIndex(teacherSpecializations)
-  const activityIndex = buildSkillIndex(activityKeywords)
-
-  if (teacherIndex.phrases.size === 0) return false
-
-  for (const phrase of teacherIndex.phrases) {
-    if (activityIndex.phrases.has(phrase)) return true
-  }
-
-  for (const token of teacherIndex.tokens) {
-    if (activityIndex.tokens.has(token)) return true
-  }
-
-  return false
 }
 
 async function getLatestSessionIssuesMap(bookingIds: string[]) {

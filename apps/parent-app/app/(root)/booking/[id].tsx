@@ -102,6 +102,42 @@ function getLocationLabel(booking: Booking | null | undefined) {
   return [booking.locality, booking.city].filter(Boolean).join(', ') || 'Your area'
 }
 
+const EN_ROUTE_WINDOW_BEFORE_MS = 60 * 60 * 1000
+const EN_ROUTE_WINDOW_AFTER_MS = 2 * 60 * 60 * 1000
+const TEACHER_LOCATION_POLL_MS = 30 * 1000
+
+// Map + directions only matter while the teacher is travelling to the child:
+// from an hour before an at-home class until the teacher checks in with the OTP.
+function isTeacherEnRoute(booking: Booking | null | undefined) {
+  if (!booking?.scheduledAt || booking.deliveryMode === 'online') return false
+  if (booking.status !== 'confirmed' || booking.teacherOtpVerifiedAt) return false
+  const start = new Date(booking.scheduledAt).getTime()
+  const now = Date.now()
+  return now >= start - EN_ROUTE_WINDOW_BEFORE_MS && now <= start + EN_ROUTE_WINDOW_AFTER_MS
+}
+
+function hasTeacherLocation(booking: Booking | null | undefined) {
+  return booking?.teacherLatitude != null && booking?.teacherLongitude != null
+}
+
+// Google Maps: teacher → home route when the teacher has shared a location, otherwise just home
+function buildTeacherMapUrl(booking: Booking, destination: string) {
+  const dest = encodeURIComponent(destination)
+  if (hasTeacherLocation(booking)) {
+    const origin = `${booking.teacherLatitude},${booking.teacherLongitude}`
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${dest}`
+}
+
+function formatUpdatedAgo(value: string | null | undefined) {
+  if (!value) return null
+  const mins = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000))
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  return `${Math.round(mins / 60)} hr ago`
+}
+
 type FeedbackChoice = 'loved_it' | 'okay' | 'not_really' | 'problem'
 
 function getFeedbackChoiceMeta(choice: FeedbackChoice) {
@@ -228,7 +264,7 @@ function getIssueCategoryKeyFromBooking(booking: Booking | null | undefined): Is
 export default function BookingDetailScreen() {
   const insets = useSafeAreaInsets()
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { parentUserId } = useAuth()
+  const { parentUserId, parentProfile } = useAuth()
   const queryClient = useQueryClient()
   const [cancelling, setCancelling] = useState(false)
   const [otp, setOtp] = useState('')
@@ -252,6 +288,8 @@ export default function BookingDetailScreen() {
     queryFn: () => parentApi.bookings.get(id!, parentUserId!),
     enabled: !!id && !!parentUserId,
     staleTime: 1000 * 30,
+    // Keep the teacher's position fresh only while they are on the way
+    refetchInterval: (query) => (isTeacherEnRoute(query.state.data) ? TEACHER_LOCATION_POLL_MS : false),
   })
   const { refreshing, onRefresh } = usePullToRefresh(async () => {
     await refetch()
@@ -348,9 +386,14 @@ export default function BookingDetailScreen() {
     )
   }
 
-  const handleOpenMap = async () => {
-    const target = encodeURIComponent(locationLabel)
-    await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${target}`)
+  const teacherEnRoute = isTeacherEnRoute(booking)
+  const homeDestination = parentProfile?.latitude != null && parentProfile?.longitude != null
+    ? `${parentProfile.latitude},${parentProfile.longitude}`
+    : locationLabel
+
+  const handleTrackTeacher = async () => {
+    if (!booking) return
+    await Linking.openURL(buildTeacherMapUrl(booking, homeDestination))
   }
 
   const handleSupport = () => {
@@ -530,9 +573,8 @@ export default function BookingDetailScreen() {
           {phase === 'upcoming' && (
             <View style={styles.phaseCard}>
               <Text style={styles.phaseTitle}>Upcoming</Text>
-              <Text style={styles.phaseText}>Directions, preparation, reschedule or cancel, and contact details should be easy before the session week gets busy.</Text>
+              <Text style={styles.phaseText}>Preparation, reschedule or cancel, and contact details are all here before the session week gets busy.</Text>
               <View style={styles.phaseList}>
-                <PhasePoint text={`Directions: ${locationLabel}`} />
                 <PhasePoint text={`Preparation: keep ${childName.toLowerCase()} ready 10 minutes early.`} />
                 <PhasePoint text="Reschedule or cancel before the cutoff if plans change." />
                 <PhasePoint text="Contact support if you need help with venue or timing." />
@@ -543,11 +585,10 @@ export default function BookingDetailScreen() {
           {phase === 'today' && (
             <View style={[styles.phaseCard, styles.phaseCardToday]}>
               <Text style={[styles.phaseTitle, styles.phaseTitleToday]}>Today</Text>
-              <Text style={[styles.phaseText, styles.phaseTextToday]}>Arrival instructions, what to bring, map access, and emergency support should be surfaced clearly on session day.</Text>
+              <Text style={[styles.phaseText, styles.phaseTextToday]}>What to bring and emergency support for today. Your teacher's live map opens about an hour before class.</Text>
               <View style={styles.phaseList}>
                 <PhasePoint text="Arrive 10 minutes early so check-in does not feel rushed." textColor={colors.primary} />
                 <PhasePoint text="Carry water, comfort items, and anything the teacher already asked for." textColor={colors.primary} />
-                <PhasePoint text={`Map and directions: ${locationLabel}`} textColor={colors.primary} />
                 <PhasePoint text="Emergency support is available if the teacher is delayed or the venue is hard to find." textColor={colors.primary} />
               </View>
             </View>
@@ -578,14 +619,31 @@ export default function BookingDetailScreen() {
             </TouchableOpacity>
           </View>
 
+          {teacherEnRoute && (
+            <View style={[styles.phaseCard, styles.phaseCardToday]}>
+              <Text style={[styles.phaseTitle, styles.phaseTitleToday]}>Teacher on the way</Text>
+              <Text style={[styles.phaseText, styles.phaseTextToday]}>
+                {hasTeacherLocation(booking)
+                  ? `${teacherName}'s location was updated ${formatUpdatedAgo(booking.teacherLocationUpdatedAt) ?? 'recently'}. Open the map to see their route to you.`
+                  : `${teacherName}'s live location will show here once they share it. You can still open the map to your address.`}
+              </Text>
+              <InfoRow icon="home-outline" label="Arriving at" value={locationLabel} />
+              <View style={styles.inlineActions}>
+                <Button
+                  variant="primary"
+                  label={hasTeacherLocation(booking) ? 'Track teacher on map' : 'Open map'}
+                  onPress={handleTrackTeacher}
+                />
+              </View>
+            </View>
+          )}
+
           {(phase === 'upcoming' || phase === 'today') && (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Before session</Text>
-              <InfoRow icon="navigate-outline" label="Directions" value={locationLabel} />
               <InfoRow icon="bag-handle-outline" label="Preparation" value="Bring water, arrive early, and keep the child comfortable." />
               <InfoRow icon="call-outline" label="Support" value="Beam support available for venue, timing, or emergency help." />
               <View style={styles.inlineActions}>
-                <Button variant="secondary" label="Open Map" onPress={handleOpenMap} />
                 <Button variant="secondary" label="Contact Support" onPress={handleSupport} />
               </View>
             </View>

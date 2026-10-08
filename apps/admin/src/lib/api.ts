@@ -1,3 +1,11 @@
+import type {
+  BookingChangeRequestStatus,
+  BookingChangeRequestType,
+  CreateBookingChangeRequestInput,
+  ReviewBookingChangeRequestInput,
+  TeacherSlotInput,
+  WeeklyAvailability,
+} from '@beam/schemas'
 import { createSupabaseBrowserClient } from './supabase/browser'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000'
@@ -226,6 +234,13 @@ export const adminApi = {
   categories: {
     list: () => apiFetch<{ items: ApiRecord[] }>('/admin/categories'),
   },
+
+  changeRequests: {
+    list: (status?: BookingChangeRequestStatus) =>
+      apiFetch<{ items: ChangeRequestRow[] }>(`/admin/change-requests${status ? `?status=${status}` : ''}`),
+    review: (id: string, body: ReviewBookingChangeRequestInput) =>
+      apiFetch<{ request: ApiRecord; refunded?: boolean }>(`/admin/change-requests/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  },
 }
 
 // Teacher self-service — same /teacher/* endpoints apps/teacher-app uses.
@@ -249,6 +264,60 @@ export type TeacherProfileRow = {
   totalSessions: number
 }
 
+export type TeacherActivityRow = {
+  id: string
+  title: string
+  sessionDurationMins: number
+  pricePerSession: string
+  categoryName: string | null
+}
+
+export type TeacherSlotRow = {
+  id: string
+  activityId: string
+  activityTitle: string | null
+  date: string
+  startTime: string
+  endTime: string
+  isAvailable: boolean
+  bookingId: string | null
+  bookingStatus: string | null
+  childFirstName: string | null
+  childLastName: string | null
+}
+
+// Shared by the teacher's own list and the admin review queue
+export type ChangeRequestRow = {
+  id: string
+  type: BookingChangeRequestType
+  status: BookingChangeRequestStatus
+  reason: string
+  adminNote: string | null
+  createdAt: string
+  reviewedAt: string | null
+  bookingId: string
+  bookingStatus: string
+  scheduledAt: string | null
+  totalAmount: string
+  activityTitle: string | null
+  childFirstName: string | null
+  childLastName: string | null
+  parentFirstName: string | null
+  parentLastName: string | null
+  parentPhone: string | null
+  teacherId: string
+  teacherFirstName: string | null
+  teacherLastName: string | null
+  currentSlotDate: string | null
+  currentSlotStart: string | null
+  currentSlotEnd: string | null
+  proposedSlotId: string | null
+  proposedSlotDate: string | null
+  proposedSlotStart: string | null
+  proposedSlotEnd: string | null
+  proposedSlotAvailable: boolean | null
+}
+
 export const teacherApi = {
   profile: {
     get: (userId: string) => apiFetch<TeacherProfileRow>(`/teacher/profile?userId=${userId}`),
@@ -256,8 +325,8 @@ export const teacherApi = {
       apiFetch<{ ok: boolean }>('/teacher/profile', { method: 'PATCH', body: JSON.stringify(body) }),
   },
   availability: {
-    get: (userId: string) => apiFetch<{ availability: Record<string, string[]> | null }>(`/teacher/availability?userId=${userId}`),
-    update: (body: { userId: string; availability: Record<string, string[]> }) =>
+    get: (userId: string) => apiFetch<{ availability: WeeklyAvailability | null }>(`/teacher/availability?userId=${userId}`),
+    update: (body: { userId: string; availability: WeeklyAvailability }) =>
       apiFetch<{ ok: boolean }>('/teacher/availability', { method: 'PATCH', body: JSON.stringify(body) }),
   },
   earnings: {
@@ -275,5 +344,27 @@ export const teacherApi = {
       if (status) q.set('status', status)
       return apiFetch<{ items: TeacherSessionRow[] }>(`/teacher/sessions?${q}`)
     },
+  },
+  activities: {
+    list: (teacherId: string) => apiFetch<{ items: TeacherActivityRow[] }>(`/teacher/activities?teacherId=${teacherId}`),
+  },
+  slots: {
+    list: (teacherId: string, params?: { from?: string; to?: string }) => {
+      const q = new URLSearchParams({ teacherId })
+      if (params?.from) q.set('from', params.from)
+      if (params?.to) q.set('to', params.to)
+      return apiFetch<{ from: string; to: string; items: TeacherSlotRow[] }>(`/teacher/slots?${q}`)
+    },
+    create: (teacherId: string, body: TeacherSlotInput) =>
+      apiFetch<TeacherSlotRow>('/teacher/slots', { method: 'POST', body: JSON.stringify({ ...body, teacherId }) }),
+    remove: (teacherId: string, slotId: string) =>
+      apiFetch<{ ok: boolean }>(`/teacher/slots/${slotId}?teacherId=${teacherId}`, { method: 'DELETE', body: JSON.stringify({}) }),
+  },
+  changeRequests: {
+    list: (teacherId: string) => apiFetch<{ items: ChangeRequestRow[] }>(`/teacher/change-requests?teacherId=${teacherId}`),
+    create: (teacherId: string, bookingId: string, body: CreateBookingChangeRequestInput) =>
+      apiFetch<ApiRecord>(`/teacher/bookings/${bookingId}/change-requests`, { method: 'POST', body: JSON.stringify({ ...body, teacherId }) }),
+    withdraw: (teacherId: string, requestId: string) =>
+      apiFetch<ApiRecord>(`/teacher/change-requests/${requestId}/withdraw`, { method: 'POST', body: JSON.stringify({ teacherId }) }),
   },
 }

@@ -1,5 +1,6 @@
 import type { Session, User } from '@supabase/supabase-js'
 import React from 'react'
+import * as SecureStore from 'expo-secure-store'
 import { supabase } from './supabase'
 import { parentApi, type ParentUser } from './api'
 
@@ -27,16 +28,32 @@ const AuthContext = React.createContext<AuthContextValue>({
 
 // Fixed UUID used when logging in with the test phone 9999999999
 const MOCK_USER_ID = '00000000-0000-0000-0000-999999999999'
+// The test-phone login has no Supabase session, so remember it ourselves
+const MOCK_SESSION_KEY = 'beam-parent-mock-session'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = React.useState<Session | null>(null)
   const [parentProfile, setParentProfile] = React.useState<ParentUser | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
-  const [isMockSession, setMockSession] = React.useState(false) // dev: auto-login with test user
+  const [isMockSession, setMockSessionState] = React.useState(false) // dev: auto-login with test user
+
+  const setMockSession = React.useCallback((value: boolean) => {
+    setMockSessionState(value)
+    void (value
+      ? SecureStore.setItemAsync(MOCK_SESSION_KEY, 'true')
+      : SecureStore.deleteItemAsync(MOCK_SESSION_KEY)
+    ).catch(() => {})
+  }, [])
 
   React.useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    // Restore both the Supabase session and the test-phone flag before
+    // declaring auth resolved, so cold start never flashes the signed-out flow.
+    Promise.all([
+      supabase.auth.getSession(),
+      SecureStore.getItemAsync(MOCK_SESSION_KEY).catch(() => null),
+    ]).then(([{ data }, mockFlag]) => {
       setSession(data.session)
+      setMockSessionState(mockFlag === 'true')
       setIsLoading(false)
     })
 
@@ -53,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null)
     setParentProfile(null)
     setMockSession(false)
-  }, [])
+  }, [setMockSession])
 
   React.useEffect(() => {
     if (isMockSession) {

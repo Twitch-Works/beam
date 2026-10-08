@@ -38,6 +38,7 @@ const mainNav: NavItem[] = [
   { label: 'Teachers',           href: '/teachers',     icon: <IconTeacher /> },
   { label: 'Activities',         href: '/activities',   icon: <IconActivity /> },
   { label: 'Bookings',           href: '/bookings',     icon: <IconCalendar /> },
+  { label: 'Change Requests',    href: '/change-requests', icon: <IconDispute /> },
   { label: 'Calendar',           href: '/calendar',     icon: <IconCalendarDays /> },
   { label: 'Payments',           href: '/payments',     icon: <IconPayment /> },
   { label: 'Reviews & Feedback', href: '/reviews',      icon: <IconStar /> },

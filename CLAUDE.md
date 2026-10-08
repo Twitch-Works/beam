@@ -318,6 +318,7 @@ src/cart.schema.ts        — CartItem, CartSummary, CheckoutInput
 src/discount.schema.ts    — DiscountCode, DiscountType, ApplyDiscountInput
 src/notification.schema.ts — NotificationTemplate, NotificationLog
 src/ai.schema.ts          — RecommendationInput, RecommendationResult
+src/schedule.schema.ts    — WeeklyAvailability, TeacherSlotInput/Filters, BookingChangeRequest (+ Create/Review/Filters inputs)
 src/index.ts              — re-exports all schemas
 ```
 
@@ -445,10 +446,10 @@ catalog.repository.ts — Drizzle queries for activities + categories + embeddin
 
 ### apps/api/src/modules/scheduling/
 ```
-index.ts                  — exports: getAvailableSlots, lockSlot, releaseSlot, createSlot, updateAvailability
-scheduling.routes.ts      — slot availability + teacher calendar management routes
-scheduling.service.ts     — availability logic, conflict detection, uses slot-lock.ts
-scheduling.repository.ts  — Drizzle queries for slots table
+index.ts                  — exports: schedulingRoutes (planned: getAvailableSlots, lockSlot, releaseSlot)
+scheduling.routes.ts      — teacher class slots (/teacher/slots, /teacher/activities), teacher change requests (/teacher/bookings/:id/change-requests, /teacher/change-requests), admin review (/admin/change-requests)
+scheduling.service.ts     — slot rules (verified teacher, specialization match, duration, overlap), change-request lifecycle, admin approve/reject (Result-returning)
+scheduling.repository.ts  — Drizzle queries for slots + booking_change_requests; atomic approve-cancel / approve-reschedule transactions
 ```
 
 ### apps/api/src/modules/payments/
@@ -541,6 +542,7 @@ profile/        — Teacher profile, availability, documents, bank account (clie
 
 (dashboard)/bookings/page.tsx          — Paginated filterable bookings table, bulk teacher assignment, booking detail modal
 (dashboard)/bookings/[id]/page.tsx     — [planned] Booking detail, assignment, status controls
+(dashboard)/change-requests/page.tsx   — Review queue for teacher reschedule/cancel requests: approve (applies change, refunds on cancel) or decline with note
 
 (dashboard)/payments/page.tsx          — Payment ledger table + payout queue management
 

@@ -4,6 +4,7 @@ import * as schema from '../../db/schema.js'
 import { eq, and, or, desc, sum, count } from 'drizzle-orm'
 import { syncConflictingTeacherSlots } from '../../lib/slot-availability.js'
 import { authorize } from '../../middleware/auth.js'
+import beamSchemas from '@beam/schemas'
 
 const DEVELOPMENT_OTP = '000000'
 const APP_MODE = process.env.APP_MODE ?? process.env.NODE_ENV ?? 'development'
@@ -214,9 +215,11 @@ export async function teacherRoutes(fastify: FastifyInstance) {
   fastify.patch<{
     Body: { userId: string; availability: Record<string, string[]> }
   }>('/teacher/availability', { preHandler: TEACHER_SELF_SERVICE }, async (req, reply) => {
-    const { availability } = req.body
     const userId = resolveActorId(req, req.body.userId)
-    if (!userId || !availability) return reply.status(400).send({ error: 'userId and availability are required' })
+    if (!userId) return reply.status(400).send({ error: 'userId is required' })
+    const parsed = beamSchemas.UpdateAvailabilityInputSchema.safeParse(req.body)
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid availability' })
+    const { availability } = parsed.data
 
     await db.update(schema.teachers)
       .set({ availabilityJson: availability, updatedAt: new Date() })

@@ -20,6 +20,7 @@ src/
   discount.schema.ts    DiscountCode, DiscountType, ApplyDiscountInput
   cart.schema.ts        CartItem, CartSummary, CheckoutInput
   ai.schema.ts          RecommendationInput, RecommendationResult
+  schedule.schema.ts    WeeklyAvailability, TeacherSlotInput, BookingChangeRequest (+ inputs)
   index.ts              re-exports everything
 ```
 

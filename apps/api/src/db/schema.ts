@@ -30,6 +30,8 @@ export const sessionIssueTypeEnum = pgEnum('session_issue_type', ['no_show', 've
 export const sessionIssueStatusEnum = pgEnum('session_issue_status', ['reported', 'reviewing', 'resolved'])
 export const sessionIssueResolutionEnum = pgEnum('session_issue_resolution', ['none', 'refund', 'credit', 'support_only'])
 export const sessionIssueDesiredOutcomeEnum = pgEnum('session_issue_desired_outcome', ['refund', 'credit', 'rebooking', 'support'])
+export const bookingChangeRequestTypeEnum = pgEnum('booking_change_request_type', ['reschedule', 'cancel'])
+export const bookingChangeRequestStatusEnum = pgEnum('booking_change_request_status', ['pending', 'approved', 'rejected', 'withdrawn'])
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
@@ -309,6 +311,31 @@ export const sessionIssuesRelations = relations(sessionIssues, ({ one }) => ({
   booking: one(bookings, { fields: [sessionIssues.bookingId], references: [bookings.id] }),
   parent: one(users, { fields: [sessionIssues.parentId], references: [users.id] }),
   teacher: one(users, { fields: [sessionIssues.teacherId], references: [users.id] }),
+}))
+
+// ─── Booking Change Requests ─────────────────────────────────────────────────
+// Teacher-initiated reschedule/cancel requests; nothing changes on the booking
+// until an admin approves. One pending request per booking (partial unique index).
+
+export const bookingChangeRequests = pgTable('booking_change_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  bookingId: uuid('booking_id').notNull().references(() => bookings.id, { onDelete: 'cascade' }),
+  teacherId: uuid('teacher_id').notNull().references(() => users.id),
+  type: bookingChangeRequestTypeEnum('type').notNull(),
+  status: bookingChangeRequestStatusEnum('status').notNull().default('pending'),
+  reason: text('reason').notNull(),
+  proposedSlotId: uuid('proposed_slot_id').references(() => slots.id, { onDelete: 'set null' }),
+  adminNote: text('admin_note'),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const bookingChangeRequestsRelations = relations(bookingChangeRequests, ({ one }) => ({
+  booking: one(bookings, { fields: [bookingChangeRequests.bookingId], references: [bookings.id] }),
+  teacher: one(users, { fields: [bookingChangeRequests.teacherId], references: [users.id] }),
+  proposedSlot: one(slots, { fields: [bookingChangeRequests.proposedSlotId], references: [slots.id] }),
 }))
 
 // ─── Discount Codes ───────────────────────────────────────────────────────────

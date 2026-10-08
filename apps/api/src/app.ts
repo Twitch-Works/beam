@@ -8,6 +8,7 @@ import { bookingRoutes } from './modules/booking/booking.routes.js'
 import { teacherRoutes } from './modules/booking/teacher.routes.js'
 import { parentRoutes } from './modules/booking/parent.routes.js'
 import { paymentsRoutes } from './modules/payments/payments.routes.js'
+import { schedulingRoutes } from './modules/scheduling/index.js'
 
 export function buildApp() {
   const fastify = Fastify({ logger: false })
@@ -54,6 +55,7 @@ export function buildApp() {
   fastify.register(teacherRoutes)
   fastify.register(parentRoutes)
   fastify.register(paymentsRoutes)
+  fastify.register(schedulingRoutes)
   fastify.register(adminRoutes)
 
   fastify.setErrorHandler((error, _req, reply) => {

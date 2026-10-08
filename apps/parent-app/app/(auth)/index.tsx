@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { colors, spacing, radius, fontSize, fontWeight } from '@/constants/theme'
+import { useAuth } from '@/lib/AuthContext'
 import { useLateOnboarding } from '@/lib/LateOnboardingContext'
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -50,6 +51,7 @@ const SLIDES: { id: string; iconName: IoniconName; title: string; subtitle: stri
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets()
   const { enabled, isReady, state } = useLateOnboarding()
+  const { session, isMockSession, isLoading: authLoading } = useAuth()
   const [activeIndex, setActiveIndex] = useState(0)
   const flatListRef = useRef<FlatList>(null)
   const onViewableItemsChanged = useRef(
@@ -58,12 +60,22 @@ export default function OnboardingScreen() {
     }
   ).current
 
-  if (!isReady) {
+  if (!isReady || authLoading) {
     return (
       <View style={styles.loadingState}>
         <ActivityIndicator color={colors.primary} />
       </View>
     )
+  }
+
+  // Signed-in parents never see the new-user flow again — resume profile
+  // setup if it was left unfinished, otherwise go straight to the app.
+  if (isMockSession) return <Redirect href="/(root)/" />
+  if (session) {
+    const onboardingStep = session.user.user_metadata?.onboardingStep as string | undefined
+    if (!onboardingStep) return <Redirect href="/(auth)/parent-setup" />
+    if (onboardingStep === 'parent-done') return <Redirect href="/(auth)/child-setup" />
+    return <Redirect href="/(root)/" />
   }
 
   if (enabled) {

@@ -318,6 +318,10 @@ export type Booking = {
   parentCompletedAt?: string | null
   payoutQueuedAt?: string | null
   payoutReleasedAt?: string | null
+  // Teacher's last shared position while en route (see @beam/schemas BookingSchema) — not yet sent by the API
+  teacherLatitude?: number | null
+  teacherLongitude?: number | null
+  teacherLocationUpdatedAt?: string | null
   canReschedule?: boolean
   canComplete?: boolean
   otpVisible?: boolean

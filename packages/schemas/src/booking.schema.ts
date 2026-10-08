@@ -28,6 +28,10 @@ export const BookingSchema = z.object({
   parentCompletedAt: z.date().nullable().optional(),
   payoutQueuedAt: z.date().nullable().optional(),
   payoutReleasedAt: z.date().nullable().optional(),
+  // Teacher's last shared position while travelling to an at-home session (not yet sent by the API)
+  teacherLatitude: z.number().nullable().optional(),
+  teacherLongitude: z.number().nullable().optional(),
+  teacherLocationUpdatedAt: z.date().nullable().optional(),
   lastWhatsAppSentAt: z.date().nullable().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),

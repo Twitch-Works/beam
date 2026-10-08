@@ -290,12 +290,6 @@ export default function PaymentScreen() {
     }
   }
 
-  async function handleOpenMap() {
-    const target = encodeURIComponent(locationText)
-    const url = `https://www.google.com/maps/search/?api=1&query=${target}`
-    await Linking.openURL(url)
-  }
-
   async function handleAddToCalendar() {
     if (!date || !time) {
       Alert.alert('Missing slot details', 'Booking time is missing, so calendar export is not available yet.')
@@ -383,7 +377,6 @@ export default function PaymentScreen() {
 
           <View style={styles.successActionCard}>
             <Text style={styles.cardTitle}>What you can do now</Text>
-            <ActionRow icon="navigate-outline" label="Directions + map" onPress={handleOpenMap} />
             <ActionRow icon="calendar-outline" label="Add to calendar" onPress={handleAddToCalendar} />
             <ActionRow icon="checkbox-outline" label="Preparation checklist" onPress={() => Alert.alert('Preparation checklist', activity?.whatToBring ?? activity?.materialsNeeded ?? 'We will share preparation notes in the booking details.')} />
             <ActionRow icon="share-social-outline" label="Share with family" onPress={handleShareWithFamily} />

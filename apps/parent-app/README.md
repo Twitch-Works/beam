@@ -387,3 +387,20 @@ pnpm lint --filter=parent-app
 - **Socket.io not connected** — `socket.io-client` is in dependencies but no connection is established anywhere. Live tracking and real-time booking updates will not work.
 - **No EAS build config** — `eas.json` does not exist. Production builds via `eas build` require it to be created and configured.
 - **Slot locking not called** — The slot picker fetches availability but does not call `lockSlot` before proceeding to payment. Concurrent bookings for the same slot are not prevented client-side.
+
+
+``` Build Parent app
+
+cd apps/parent-app
+eas login                       # once, with your Expo account
+pnpm build:android:apk    
+
+
+OR
+
+
+cd apps/parent-app
+npx expo prebuild --platform android --clean
+cd android && ./gradlew assembleRelease
+# APK → android/app/build/outputs/apk/release/app-release.apk
+```

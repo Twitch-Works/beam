@@ -31,6 +31,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString() }
 function daysFromNow(n: number) { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString() }
+function dateFromNow(n: number) { return daysFromNow(n).slice(0, 10) }
+function clock(mins: number) { return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}` }
 
 function must<T>(result: { data: T; error: { message: string } | null }, label: string): T {
   if (result.error) throw new Error(`${label}: ${result.error.message}`)
@@ -202,6 +204,45 @@ async function seedTestTeacher() {
     } else {
       console.log('  → skipped sample bookings (no published activities/parent found — run `pnpm --filter=api db:seed` first for richer demo data)')
     }
+  }
+
+  // ── Open class times for the next week, so My Classes + reschedule requests are testable ──
+  const bookedActivities = mustList(
+    await supabase.from('bookings').select('activity_id').eq('teacher_id', teacherId),
+    'select booked activities'
+  )
+  const activityIds = [...new Set(bookedActivities.map((b: { activity_id: string }) => b.activity_id))]
+  const futureSlots = activityIds.length
+    ? mustList(
+        await supabase.from('slots').select('id').eq('teacher_id', teacherId).in('activity_id', activityIds).gte('date', dateFromNow(1)),
+        'select future slots'
+      )
+    : []
+
+  if (activityIds.length === 0) {
+    console.log('  → skipped class times (teacher has no booked activities yet)')
+  } else if (futureSlots.length > 0) {
+    console.log(`  → ${futureSlots.length} future class times already exist for booked activities, skipping`)
+  } else {
+    const activityRows = mustList(
+      await supabase.from('activities').select('id, session_duration_mins').in('id', activityIds),
+      'select activity durations'
+    )
+    const rows = activityRows.flatMap((a: { id: string; session_duration_mins: number }, i: number) =>
+      [3, 4, 6].map((offset) => {
+        const startMins = (10 + i * 3) * 60 // stagger activities 3h apart so windows never overlap
+        return {
+          teacher_id: teacherId,
+          activity_id: a.id,
+          date: dateFromNow(offset),
+          start_time: clock(startMins),
+          end_time: clock(startMins + a.session_duration_mins),
+          is_available: true,
+        }
+      })
+    )
+    must(await supabase.from('slots').insert(rows), 'insert slots')
+    console.log(`  → ${rows.length} open class times created`)
   }
 
   console.log('✅ Demo teacher seed complete')
