@@ -19,8 +19,43 @@
     {
       "idx": 2,
       "version": "7",
+      "when": 1790000000000,
+      "tag": "0003_parent_catalog_alignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790000000001,
+      "tag": "0004_session_issue_flow",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790000000002,
+      "tag": "0005_dispute_case_tracker",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
       "when": 1790000000003,
       "tag": "0006_fill_activity_slots_aug_to_dec_2026",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790000000004,
+      "tag": "0007_booking_change_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790000000005,
+      "tag": "0008_provisional_parent_accounts",
       "breakpoints": true
     }
   ]

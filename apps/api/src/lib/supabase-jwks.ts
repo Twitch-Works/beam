@@ -7,9 +7,13 @@ const keyCache = new Map<string, string>()
 let lastFetchAt = 0
 const REFETCH_COOLDOWN_MS = 60_000
 
+// Explicit shape: Vercel's type check can resolve the global `Response` to an
+// empty type (via @types/node's conditional fetch globals), dropping ok/status/json.
+type JwksResponse = { ok: boolean; status: number; json(): Promise<unknown> }
+
 async function refreshKeys() {
   lastFetchAt = Date.now()
-  const res = await fetch(`${config.supabase.url}/auth/v1/.well-known/jwks.json`)
+  const res = (await fetch(`${config.supabase.url}/auth/v1/.well-known/jwks.json`)) as unknown as JwksResponse
   if (!res.ok) throw new Error(`JWKS fetch failed: ${res.status}`)
   const { keys } = (await res.json()) as { keys: Array<Record<string, unknown> & { kid?: string }> }
   for (const jwk of keys) {

@@ -102,7 +102,7 @@ Route → Service → Repository module; bodies validated with `@beam/schemas` (
 `CreateBookingChangeRequestInputSchema`, `ReviewBookingChangeRequestInputSchema`). `/teacher/*` routes use
 `authorize('teacher','admin','super_admin')` and derive the teacher from the JWT for the `teacher` role;
 `/admin/change-requests*` use `authorize('admin','super_admin')`. Table: `booking_change_requests`
-(migration `0007_booking_change_requests.sql` — apply manually, like 0003–0005).
+(migration `0007_booking_change_requests.sql`; all migrations 0000–0008 are registered in `meta/_journal.json` — apply with `pnpm db:migrate`).
 
 | Method | Path | Body / Query | Behaviour |
 |--------|------|--------------|-----------|
