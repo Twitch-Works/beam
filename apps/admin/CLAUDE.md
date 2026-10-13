@@ -26,9 +26,9 @@ not just the UI routing above. `/admin/*` routes are separately gated to
 `admin`/`super_admin` only and a teacher's token can never call them.
 
 Pages: `(dashboard)/my/profile/page.tsx` (edit bio/city/phone/specializations,
-view rating/verification), `(dashboard)/my/schedule/page.tsx` (tabs: upcoming
-bookings with reschedule/cancel requests, My Classes slot manager, weekly
-availability editor, past sessions), `(dashboard)/my/earnings/page.tsx`
+view rating/verification), `(dashboard)/my/schedule/page.tsx` (tabs: class
+calendar with teachable activities + add/remove class times, upcoming bookings
+with reschedule/cancel requests, weekly availability editor, past sessions), `(dashboard)/my/earnings/page.tsx`
 (earnings summary + payout history).
 
 Teacher change requests never touch the booking directly — they land in the ops
@@ -239,9 +239,9 @@ Topbar.tsx          — Sticky topbar: global search, date chip, notification be
 
 (dashboard)/my/page.tsx                — teacher role: redirects to /my/earnings
 (dashboard)/my/profile/page.tsx        — teacher role: own profile view + edit form (GET/PATCH /teacher/profile)
-(dashboard)/my/schedule/page.tsx       — teacher role: tabbed schedule shell; loads availability, sessions, slots, teachable activities, change requests
+(dashboard)/my/schedule/page.tsx       — teacher role: tabbed schedule shell (Class Calendar default) + header "Add class time" button; loads availability, sessions, slots, teachable activities, change requests
 (dashboard)/my/schedule/UpcomingBookingsPanel.tsx — teacher role: upcoming bookings + inline reschedule/cancel request form, withdraw, request history
-(dashboard)/my/schedule/ClassTimesPanel.tsx — teacher role: next-30-day class slots grouped by day; add (POST /teacher/slots) / remove unbooked
+(dashboard)/my/schedule/ClassTimesPanel.tsx — teacher role: "Activities you can teach" cards + month calendar (or list) of class times fetched per month (GET /teacher/slots?from&to); day detail; add (POST /teacher/slots) / remove unbooked
 (dashboard)/my/schedule/AvailabilityPanel.tsx — teacher role: structured weekly hours editor (time ranges per weekday, validated)
 (dashboard)/change-requests/page.tsx   — admin: review queue for teacher reschedule/cancel requests; approve/decline with note + confirmation
 (dashboard)/my/earnings/page.tsx       — teacher role: earnings summary + payout history (GET /teacher/earnings)

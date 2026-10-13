@@ -2715,3 +2715,224 @@ select.form-input {
     gap: var(--space-3);
   }
 }
+
+/* ─── Teacher class calendar (my/schedule) ───────────────────────────────── */
+.activity-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-3);
+}
+
+.activity-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-btn);
+  background: var(--color-white);
+}
+
+.activity-chip__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-navy);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-chip__meta {
+  font-size: 12px;
+  color: var(--color-gray);
+  margin-top: 2px;
+}
+
+.view-switch {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+}
+
+.view-switch button {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  background: var(--color-white);
+  color: var(--color-gray);
+  cursor: pointer;
+}
+
+.view-switch button[aria-pressed='true'] {
+  background: var(--color-mint);
+  color: var(--color-primary);
+}
+
+.class-form {
+  margin: var(--space-3) var(--space-4) 0;
+  padding: var(--space-3);
+  background: var(--color-bg);
+  border-radius: var(--radius-card);
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.class-cal {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  margin: var(--space-4);
+  background: var(--color-border);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-btn);
+  overflow: hidden;
+}
+
+.class-cal__weekday {
+  padding: var(--space-2);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-gray);
+  background: var(--color-bg);
+  text-align: center;
+}
+
+.class-cal__day {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-height: 96px;
+  padding: 6px;
+  border: none;
+  background: var(--color-white);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  min-width: 0;
+}
+
+.class-cal__day:hover {
+  background: var(--color-bg-hover);
+}
+
+.class-cal__day--outside .class-cal__date,
+.class-cal__day--past .class-cal__date {
+  color: var(--color-gray-muted);
+}
+
+.class-cal__day--outside {
+  background: var(--color-bg);
+}
+
+.class-cal__day--selected {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+.class-cal__date {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-navy);
+  align-self: flex-start;
+  min-width: 22px;
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  border-radius: 50%;
+}
+
+.class-cal__day--today .class-cal__date {
+  background: var(--color-primary);
+  color: var(--color-white);
+}
+
+.class-cal__pill {
+  display: block;
+  padding: 1px 6px;
+  border-radius: var(--radius-badge);
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.class-cal__pill--open {
+  background: var(--color-mint);
+  color: var(--color-primary);
+}
+
+.class-cal__pill--booked {
+  background: var(--status-confirmed-bg);
+  color: var(--status-confirmed-text);
+}
+
+.class-cal__pill--held {
+  background: var(--status-pending-bg);
+  color: var(--status-pending-text);
+}
+
+.class-cal__more {
+  font-size: 11px;
+  color: var(--color-gray);
+  padding-left: 6px;
+}
+
+.class-cal__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: 0 var(--space-4) var(--space-4);
+  font-size: 12px;
+  color: var(--color-gray);
+}
+
+.class-cal__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.class-cal__dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+@media (max-width: 768px) {
+  .class-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .class-cal {
+    margin: var(--space-3) 0;
+    border-radius: 0;
+  }
+
+  .class-cal__day {
+    min-height: 56px;
+    padding: 4px;
+  }
+
+  /* Pills collapse to colour bars on narrow screens; tap a day for detail */
+  .class-cal__pill {
+    font-size: 0;
+    height: 4px;
+    padding: 0;
+  }
+
+  .class-cal__more {
+    display: none;
+  }
+}

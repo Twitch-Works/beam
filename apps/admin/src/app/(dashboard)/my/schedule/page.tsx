@@ -15,7 +15,7 @@ import { AvailabilityPanel } from './AvailabilityPanel'
 import { ClassTimesPanel } from './ClassTimesPanel'
 import { UpcomingBookingsPanel } from './UpcomingBookingsPanel'
 
-type Tab = 'bookings' | 'classes' | 'availability' | 'past'
+type Tab = 'classes' | 'bookings' | 'availability' | 'past'
 
 type ScheduleData = {
   availability: WeeklyAvailability | null
@@ -27,7 +27,8 @@ type ScheduleData = {
 
 export default function MySchedulePage() {
   const teacherId = useTeacherId()
-  const [tab, setTab] = useState<Tab>('bookings')
+  const [tab, setTab] = useState<Tab>('classes')
+  const [addSignal, setAddSignal] = useState(0)
   const [data, setData] = useState<ScheduleData | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -80,8 +81,8 @@ export default function MySchedulePage() {
   )
 
   const tabs: { id: Tab; label: string }[] = [
+    { id: 'classes', label: `Class Calendar (${openSlots} open)` },
     { id: 'bookings', label: pendingRequests ? `Upcoming Bookings (${pendingRequests} pending)` : 'Upcoming Bookings' },
-    { id: 'classes', label: `My Classes (${openSlots} open)` },
     { id: 'availability', label: 'Weekly Availability' },
     { id: 'past', label: 'Past Sessions' },
   ]
@@ -93,6 +94,17 @@ export default function MySchedulePage() {
           <h1>My Schedule</h1>
           <p className="dashboard-hero__sub">Plan your class times, track bookings, and request changes.</p>
         </div>
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={data.activities.length === 0}
+          onClick={() => {
+            setTab('classes')
+            setAddSignal((n) => n + 1)
+          }}
+        >
+          + Add class time
+        </button>
       </div>
 
       {error && (
@@ -120,7 +132,7 @@ export default function MySchedulePage() {
         <UpcomingBookingsPanel teacherId={teacherId} sessions={data.sessions} slots={data.slots} requests={data.requests} onChanged={load} />
       )}
       {tab === 'classes' && (
-        <ClassTimesPanel teacherId={teacherId} activities={data.activities} slots={data.slots} onChanged={load} />
+        <ClassTimesPanel teacherId={teacherId} activities={data.activities} onChanged={load} addSignal={addSignal} />
       )}
       {tab === 'availability' && <AvailabilityPanel teacherId={teacherId} initial={data.availability} />}
       {tab === 'past' && (
